@@ -5,5 +5,5 @@ config:
   provider:
     apiVersion: openstack.csctl.clusterstack.x-k8s.io/v1alpha1
     config:
-      methode: get
+      method: get
     type: openstack
