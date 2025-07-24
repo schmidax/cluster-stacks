@@ -1,5 +1,0 @@
-images:
-  controlPlane:
-    - name: registry.scs.community/docker.io/kindest/node:v1.30.10
-  worker:
-    - name: registry.scs.community/docker.io/kindest/node:v1.30.10

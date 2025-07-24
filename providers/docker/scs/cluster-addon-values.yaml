@@ -1,4 +1,0 @@
-values: |
-  metrics-server:
-    commonLabels:
-      domain: "{{ .Cluster.spec.controlPlaneEndpoint.host }}"
