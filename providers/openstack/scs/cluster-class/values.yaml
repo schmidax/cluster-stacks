@@ -5,11 +5,15 @@ restrict_kubeapi: []
 # newly introduced:
 openstack_loadbalancer_apiserver: false
 # TBD, currently needed:
+controlPlaneImage: ubuntu-capi-image-v1.32.2
+workerImage: ubuntu-capi-image-v1.32.2
 images:
-  controlPlane:
-    name: ubuntu-capi-image-v1.32.1
-  worker:
-    name: ubuntu-capi-image-v1.32.1
+  - name: ubuntu-capi-image-v1.32.2
+    url: https://swift.services.a.regiocloud.tech/swift/v1/AUTH_b182637428444b9aa302bb8d5a5a418c/openstack-k8s-capi-images/ubuntu-2204-kube-v1.32/ubuntu-2204-kube-v1.33.2.qcow2
+    ubuntuVersion: "22.04"
+    hash:
+      algorithm: sha256
+      value: 4a917ef42c860a07efb1e4da1a3cf68266f17b9a34d8480b446e90e7922fe55d
 identityRef:
   name: openstack
   cloudName: openstack

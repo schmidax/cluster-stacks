@@ -11,4 +11,4 @@ spec:
         name: {{ .Values.identityRef.name }}
       image:
         filter:
-          name: {{ .Values.images.controlPlane.name }}
+          name: {{ .Values.controlPlaneImage }}

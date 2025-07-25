@@ -11,4 +11,4 @@ spec:
         name: {{ .Values.identityRef.name }}
       image:
         filter:
-          name: {{ .Values.images.worker.name }}
+          name: {{ .Values.workerImage }}
