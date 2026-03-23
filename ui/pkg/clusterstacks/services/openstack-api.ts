@@ -52,6 +52,7 @@ export class OpenStackApiService {
   private token: string | null = null;
   private catalog: CatalogEntry[] = [];
   private currentProjectId: string | null = null;
+  private currentProjectName: string | null = null;
 
   constructor(config: OpenStackConfig, store: any) {
     this.config = config;
@@ -81,6 +82,9 @@ export class OpenStackApiService {
     }
     if (response.token?.project?.id) {
       this.currentProjectId = response.token.project.id;
+    }
+    if (response.token?.project?.name) {
+      this.currentProjectName = response.token.project.name;
     }
 
     return this.token!;
@@ -314,5 +318,9 @@ export class OpenStackApiService {
 
   getCurrentProjectId(): string | null {
     return this.currentProjectId;
+  }
+
+  getCurrentProjectName(): string | null {
+    return this.currentProjectName;
   }
 }

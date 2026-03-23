@@ -168,6 +168,8 @@ clusterstacks:
     regionPlaceholder: RegionOne
     cloudYaml: Oder clouds.yaml-Inhalt einfügen
     cloudYamlPlaceholder: "clouds:\n  openstack:\n    auth:\n      ..."
+    uploadFile: clouds.yaml hochladen
+    useFormInstead: Formular verwenden
     save: Anmeldedaten speichern
     cancel: Abbrechen
     testConnection: Verbindung testen

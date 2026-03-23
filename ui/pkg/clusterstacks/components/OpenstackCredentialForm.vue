@@ -4,18 +4,6 @@
     <div v-if="!showYaml" class="manual-form">
       <div class="form-row">
         <LabeledInput
-          v-model="form.projectName"
-          :label="t('clusterstacks.credentialCreate.projectName')"
-          :placeholder="t('clusterstacks.credentialCreate.projectNamePlaceholder')"
-          :required="true"
-          :disabled="isEdit"
-        />
-        <div class="namespace-hint">
-          {{ t('clusterstacks.credentialCreate.namespaceHint') }}: <code>cso-{{ form.projectName || '…' }}</code>
-        </div>
-      </div>
-      <div class="form-row">
-        <LabeledInput
           v-model="form.authUrl"
           :label="t('clusterstacks.credentialCreate.authUrl')"
           :placeholder="t('clusterstacks.credentialCreate.authUrlPlaceholder')"
@@ -49,15 +37,28 @@
       </div>
     </div>
 
-    <!-- YAML paste alternative -->
-    <div class="yaml-toggle">
+    <!-- YAML paste alternative (toggle hidden when editing) -->
+    <div v-if="!isEdit" class="yaml-toggle">
       <button class="btn btn-sm role-link" @click="showYaml = !showYaml">
-        {{ showYaml ? 'Use form instead' : t('clusterstacks.credentialCreate.cloudYaml') }}
+        {{ showYaml ? t('clusterstacks.credentialCreate.useFormInstead') : t('clusterstacks.credentialCreate.cloudYaml') }}
       </button>
     </div>
 
     <div v-if="showYaml" class="form-row">
       <label class="form-label">{{ t('clusterstacks.credentialCreate.cloudYaml') }}</label>
+      <div class="yaml-upload-row">
+        <label class="btn btn-sm role-secondary yaml-upload-btn">
+          {{ t('clusterstacks.credentialCreate.uploadFile') }}
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".yaml,.yml"
+            class="file-input-hidden"
+            @change="handleFileUpload"
+          />
+        </label>
+        <span v-if="uploadedFileName" class="uploaded-file-name">{{ uploadedFileName }}</span>
+      </div>
       <textarea
         v-model="yamlContent"
         class="yaml-textarea"
@@ -74,6 +75,20 @@
         : `${t('clusterstacks.credentialCreate.testError')}: ${testResult.error}` }}
     </div>
 
+    <!-- Project name (shown in both modes, appears after successful connection test or when editing) -->
+    <div v-if="connectionVerified" class="form-row project-name-section">
+      <LabeledInput
+        v-model="form.projectName"
+        :label="t('clusterstacks.credentialCreate.projectName')"
+        :placeholder="t('clusterstacks.credentialCreate.projectNamePlaceholder')"
+        :required="true"
+        :disabled="isEdit"
+      />
+      <div class="namespace-hint">
+        {{ t('clusterstacks.credentialCreate.namespaceHint') }}: <code>cso-{{ form.projectName || '…' }}</code>
+      </div>
+    </div>
+
     <!-- Actions -->
     <div class="form-actions">
       <button class="btn role-secondary" @click="$emit('cancel')">
@@ -82,7 +97,7 @@
       <BusyButton :busy="testing" class="btn role-secondary" @click="testConnection">
         {{ t('clusterstacks.credentialCreate.testConnection') }}
       </BusyButton>
-      <BusyButton :busy="saving" :disabled="!canSave" class="btn role-primary" @click="save">
+      <BusyButton v-if="connectionVerified" :busy="saving" :disabled="!canSave" class="btn role-primary" @click="save">
         {{ t('clusterstacks.credentialCreate.save') }}
       </BusyButton>
     </div>
@@ -110,9 +125,10 @@ export default {
 
   data() {
     return {
-      showYaml:    false,
-      yamlContent: '',
-      yamlError:   null,
+      showYaml:         false,
+      yamlContent:      '',
+      yamlError:        null,
+      uploadedFileName: '',
 
       form: {
         projectName: '',
@@ -139,11 +155,27 @@ export default {
       return `cso-${this.form.projectName}`;
     },
 
+    // Connection is verified when test succeeded or when editing existing credentials
+    connectionVerified() {
+      return this.isEdit || (this.testResult && this.testResult.success);
+    },
+
     canSave() {
+      if (!this.connectionVerified) {
+        return false;
+      }
       if (this.showYaml) {
-        return !!this.yamlContent;
+        return !!(this.yamlContent && this.form.projectName);
       }
       return !!(this.form.projectName && this.form.authUrl);
+    },
+  },
+
+  watch: {
+    existing(newVal) {
+      if (newVal) {
+        this.populateFromExisting();
+      }
     },
   },
 
@@ -165,6 +197,13 @@ export default {
       this.form.username    = decode('username');
       this.form.regionName  = decode('regionName');
       // Don't pre-fill password for security
+
+      // If the secret contains a cloudYaml entry, switch to YAML mode
+      const cloudYaml = decode('cloudYaml');
+      if (cloudYaml) {
+        this.showYaml    = true;
+        this.yamlContent = cloudYaml;
+      }
     },
 
     async testConnection() {
@@ -175,6 +214,17 @@ export default {
         const api = this.buildApiService();
         await api.getToken();
         this.testResult = { success: true };
+
+        // Auto-fill project name from API response or parsed YAML
+        const apiProjectName = api.getCurrentProjectName();
+        if (apiProjectName && !this.form.projectName) {
+          this.form.projectName = apiProjectName;
+        } else if (this.showYaml && !this.form.projectName) {
+          const cfg = this.parseCloudYaml();
+          if (cfg.projectName) {
+            this.form.projectName = cfg.projectName;
+          }
+        }
       } catch (e) {
         this.testResult = { success: false, error: e?.message || String(e) };
       } finally {
@@ -229,6 +279,22 @@ export default {
         this.yamlError = this.t('clusterstacks.errors.invalidYaml');
         throw new Error('Invalid YAML');
       }
+    },
+
+    handleFileUpload(event) {
+      const file = event.target.files?.[0];
+      if (!file) {
+        return;
+      }
+      this.uploadedFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.yamlContent = e.target?.result || '';
+      };
+      reader.onerror = () => {
+        this.yamlError = this.t('clusterstacks.errors.invalidYaml');
+      };
+      reader.readAsText(file);
     },
 
     async save() {
@@ -365,6 +431,35 @@ export default {
 
 .yaml-toggle {
   margin-bottom: 12px;
+}
+
+.yaml-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.yaml-upload-btn {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.file-input-hidden {
+  display: none;
+}
+
+.uploaded-file-name {
+  font-size: 0.85em;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.project-name-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
 }
 
 .form-actions {

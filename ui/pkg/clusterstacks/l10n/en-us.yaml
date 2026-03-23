@@ -168,6 +168,8 @@ clusterstacks:
     regionPlaceholder: RegionOne
     cloudYaml: Or paste clouds.yaml content
     cloudYamlPlaceholder: "clouds:\n  openstack:\n    auth:\n      ..."
+    uploadFile: Upload clouds.yaml
+    useFormInstead: Use form instead
     save: Save Credentials
     cancel: Cancel
     testConnection: Test Connection
