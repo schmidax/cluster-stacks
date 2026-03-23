@@ -140,11 +140,11 @@ export class OpenStackApiService {
   private currentProjectId: string | null = null;
 
   /**
-   * @param cloudsYaml  Raw text content of a clouds.yaml file.
+   * @param cloudsYaml  Raw text content of a clouds.yaml file, or a pre-parsed credential object.
    * @param store       Rancher Vuex store (used for proxied HTTP requests).
    */
-  constructor(cloudsYaml: string, store: any) {
-    this.cloud = parseCloudsYaml(cloudsYaml);
+  constructor(cloudsYaml: string | ParsedCloud, store: any) {
+    this.cloud = typeof cloudsYaml === 'string' ? parseCloudsYaml(cloudsYaml) : cloudsYaml as ParsedCloud;
     this.store = store;
   }
 
