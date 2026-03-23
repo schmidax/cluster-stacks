@@ -1,56 +1,7 @@
 <template>
   <div class="credential-form">
-    <!-- Manual form -->
-    <div v-if="!showYaml" class="manual-form">
-      <div class="form-row">
-        <LabeledInput
-          v-model="form.projectName"
-          :label="t('clusterstacks.credentialCreate.projectName')"
-          :placeholder="t('clusterstacks.credentialCreate.projectNamePlaceholder')"
-          :required="true"
-          :disabled="isEdit"
-        />
-        <div class="namespace-hint">
-          {{ t('clusterstacks.credentialCreate.namespaceHint') }}: <code>cso-{{ form.projectName || '…' }}</code>
-        </div>
-      </div>
-      <div class="form-row">
-        <LabeledInput
-          v-model="form.authUrl"
-          :label="t('clusterstacks.credentialCreate.authUrl')"
-          :placeholder="t('clusterstacks.credentialCreate.authUrlPlaceholder')"
-          :required="true"
-        />
-      </div>
-      <div class="form-row two-col">
-        <LabeledInput
-          v-model="form.domainName"
-          :label="t('clusterstacks.credentialCreate.domainName')"
-          :placeholder="t('clusterstacks.credentialCreate.domainNamePlaceholder')"
-        />
-        <LabeledInput
-          v-model="form.regionName"
-          :label="t('clusterstacks.credentialCreate.region')"
-          :placeholder="t('clusterstacks.credentialCreate.regionPlaceholder')"
-        />
-      </div>
-      <div class="form-row two-col">
-        <LabeledInput
-          v-model="form.username"
-          :label="t('clusterstacks.credentialCreate.username')"
-          :placeholder="t('clusterstacks.credentialCreate.usernamePlaceholder')"
-        />
-        <LabeledInput
-          v-model="form.password"
-          :label="t('clusterstacks.credentialCreate.password')"
-          :placeholder="t('clusterstacks.credentialCreate.passwordPlaceholder')"
-          type="password"
-        />
-      </div>
-    </div>
-
-    <!-- YAML paste / upload alternative -->
-    <div v-if="showYaml" class="form-row">
+    <!-- clouds.yaml paste / upload -->
+    <div class="form-row">
       <div class="yaml-header">
         <label class="form-label">{{ t('clusterstacks.credentialCreate.cloudYaml') }}</label>
         <button class="btn btn-sm role-secondary" @click="$refs.yamlFileInput.click()">
@@ -83,13 +34,6 @@
           {{ t('clusterstacks.credentialCreate.namespaceHint') }}: <code>cso-{{ form.projectName }}</code>
         </div>
       </div>
-    </div>
-
-    <!-- Toggle between form and YAML (hidden during edit to avoid overwriting) -->
-    <div v-if="!isEdit" class="yaml-toggle">
-      <button class="btn btn-sm role-link" @click="toggleYamlMode">
-        {{ showYaml ? 'Use form instead' : t('clusterstacks.credentialCreate.cloudYaml') }}
-      </button>
     </div>
 
     <!-- Connection test result -->
@@ -141,18 +85,12 @@ export default {
 
   data() {
     return {
-      showYaml:         false,
       yamlContent:      '',
       yamlError:        null,
       connectionTested: false,
 
       form: {
         projectName: '',
-        authUrl:     '',
-        domainName:  'Default',
-        username:    '',
-        password:    '',
-        regionName:  '',
       },
 
       saving:     false,
@@ -172,10 +110,7 @@ export default {
     },
 
     canSave() {
-      if (this.showYaml) {
-        return !!(this.yamlContent && this.form.projectName);
-      }
-      return !!(this.form.projectName && this.form.authUrl);
+      return !!(this.yamlContent && this.form.projectName);
     },
   },
 
@@ -193,9 +128,9 @@ export default {
     // Require re-test when YAML content changes (only relevant for new credentials)
     yamlContent() {
       if (!this.isEdit) {
-        this.connectionTested   = false;
-        this.form.projectName   = '';
-        this.testResult         = null;
+        this.connectionTested = false;
+        this.form.projectName = '';
+        this.testResult       = null;
       }
     },
   },
@@ -209,28 +144,11 @@ export default {
       this.form.projectName = ns.startsWith('cso-') ? ns.slice(4) : decode('projectName');
 
       if (data['clouds.yaml']) {
-        // Credential was saved in YAML mode – restore YAML view and content
-        this.showYaml    = true;
         this.yamlContent = decode('clouds.yaml');
-      } else {
-        // Credential was saved via the manual form
-        this.showYaml        = false;
-        this.form.authUrl    = decode('authUrl');
-        this.form.domainName = decode('domainName');
-        this.form.username   = decode('username');
-        this.form.regionName = decode('regionName');
-        // Don't pre-fill password for security
       }
 
       // Treat a previously saved credential as already verified
       this.connectionTested = true;
-    },
-
-    toggleYamlMode() {
-      this.showYaml         = !this.showYaml;
-      this.connectionTested = false;
-      this.testResult       = null;
-      this.form.projectName = '';
     },
 
     async testConnection() {
@@ -243,12 +161,10 @@ export default {
         await api.getToken();
         this.testResult       = { success: true };
         this.connectionTested = true;
-        // In YAML mode, extract the project name from the parsed config
-        if (this.showYaml) {
-          const config = this.parseCloudYaml();
-          if (config.projectName) {
-            this.form.projectName = config.projectName;
-          }
+        // Extract the project name from the parsed config
+        const config = this.parseCloudYaml();
+        if (config.projectName) {
+          this.form.projectName = config.projectName;
         }
       } catch (e) {
         // Rancher's store throws an HTTP response object, not a plain Error.
@@ -266,19 +182,8 @@ export default {
     },
 
     buildApiService() {
-      if (this.showYaml) {
-        // Parse cloud.yaml
-        const config = this.parseCloudYaml();
-        return new OpenStackApiService(config, this.$store);
-      }
-      return new OpenStackApiService({
-        authUrl:     this.form.authUrl,
-        username:    this.form.username,
-        password:    this.form.password,
-        projectName: this.form.projectName,
-        domainName:  this.form.domainName,
-        regionName:  this.form.regionName,
-      }, this.$store);
+      const config = this.parseCloudYaml();
+      return new OpenStackApiService(config, this.$store);
     },
 
     onFileUpload(event) {
@@ -394,13 +299,8 @@ export default {
         },
         type: 'Opaque',
         data: {
-          authUrl:     encode(this.form.authUrl),
-          username:    encode(this.form.username),
-          password:    encode(this.form.password),
-          projectName: encode(this.form.projectName),
-          domainName:  encode(this.form.domainName),
-          regionName:  encode(this.form.regionName),
-          ...(this.showYaml ? { 'clouds.yaml': encode(this.yamlContent) } : {}),
+          projectName:  encode(this.form.projectName),
+          'clouds.yaml': encode(this.yamlContent),
         },
       };
     },
@@ -432,12 +332,6 @@ export default {
 
 .form-row {
   margin-bottom: 16px;
-
-  &.two-col {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
 }
 
 .form-label {
@@ -472,11 +366,6 @@ export default {
 
 .project-name-detected {
   margin-top: 12px;
-}
-
-.yaml-toggle {
-  margin-top: 8px;
-  margin-bottom: 12px;
 }
 
 .form-actions {
