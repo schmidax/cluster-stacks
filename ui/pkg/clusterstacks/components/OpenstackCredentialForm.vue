@@ -49,15 +49,21 @@
       </div>
     </div>
 
-    <!-- YAML paste alternative -->
-    <div class="yaml-toggle">
-      <button class="btn btn-sm role-link" @click="showYaml = !showYaml">
-        {{ showYaml ? 'Use form instead' : t('clusterstacks.credentialCreate.cloudYaml') }}
-      </button>
-    </div>
-
+    <!-- YAML paste / upload alternative -->
     <div v-if="showYaml" class="form-row">
-      <label class="form-label">{{ t('clusterstacks.credentialCreate.cloudYaml') }}</label>
+      <div class="yaml-header">
+        <label class="form-label">{{ t('clusterstacks.credentialCreate.cloudYaml') }}</label>
+        <button class="btn btn-sm role-secondary" @click="$refs.yamlFileInput.click()">
+          {{ t('clusterstacks.credentialCreate.uploadYaml') }}
+        </button>
+        <input
+          ref="yamlFileInput"
+          type="file"
+          accept=".yaml,.yml,.txt"
+          style="display:none"
+          @change="onFileUpload"
+        />
+      </div>
       <textarea
         v-model="yamlContent"
         class="yaml-textarea"
@@ -65,6 +71,25 @@
         rows="15"
       />
       <div v-if="yamlError" class="banner banner-error">{{ yamlError }}</div>
+
+      <!-- Project name (read-only) shown after a successful connection test -->
+      <div v-if="form.projectName" class="form-row project-name-detected">
+        <LabeledInput
+          v-model="form.projectName"
+          :label="t('clusterstacks.credentialCreate.projectName')"
+          :disabled="true"
+        />
+        <div class="namespace-hint">
+          {{ t('clusterstacks.credentialCreate.namespaceHint') }}: <code>cso-{{ form.projectName }}</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toggle between form and YAML (hidden during edit to avoid overwriting) -->
+    <div v-if="!isEdit" class="yaml-toggle">
+      <button class="btn btn-sm role-link" @click="toggleYamlMode">
+        {{ showYaml ? 'Use form instead' : t('clusterstacks.credentialCreate.cloudYaml') }}
+      </button>
     </div>
 
     <!-- Connection test result -->
@@ -82,7 +107,13 @@
       <BusyButton :busy="testing" class="btn role-secondary" @click="testConnection">
         {{ t('clusterstacks.credentialCreate.testConnection') }}
       </BusyButton>
-      <BusyButton :busy="saving" :disabled="!canSave" class="btn role-primary" @click="save">
+      <BusyButton
+        v-if="connectionTested || isEdit"
+        :busy="saving"
+        :disabled="!canSave"
+        class="btn role-primary"
+        @click="save"
+      >
         {{ t('clusterstacks.credentialCreate.save') }}
       </BusyButton>
     </div>
@@ -110,9 +141,10 @@ export default {
 
   data() {
     return {
-      showYaml:    false,
-      yamlContent: '',
-      yamlError:   null,
+      showYaml:         false,
+      yamlContent:      '',
+      yamlError:        null,
+      connectionTested: false,
 
       form: {
         projectName: '',
@@ -141,40 +173,83 @@ export default {
 
     canSave() {
       if (this.showYaml) {
-        return !!this.yamlContent;
+        return !!(this.yamlContent && this.form.projectName);
       }
       return !!(this.form.projectName && this.form.authUrl);
     },
   },
 
-  mounted() {
-    if (this.existing) {
-      this.populateFromExisting();
-    }
+  watch: {
+    // Re-populate form whenever the parent asynchronously resolves the existing secret
+    existing: {
+      immediate: true,
+      handler(val) {
+        if (val) {
+          this.populateFromExisting();
+        }
+      },
+    },
+
+    // Require re-test when YAML content changes (only relevant for new credentials)
+    yamlContent() {
+      if (!this.isEdit) {
+        this.connectionTested   = false;
+        this.form.projectName   = '';
+        this.testResult         = null;
+      }
+    },
   },
 
   methods: {
     populateFromExisting() {
       const data = this.existing.data || {};
-      const decode = (k) => data[k] ? atob(data[k]) : '';
+      const decode = (k) => (data[k] ? atob(data[k]) : '');
       // Derive projectName from namespace by stripping the "cso-" prefix
       const ns = this.existing.metadata.namespace || '';
       this.form.projectName = ns.startsWith('cso-') ? ns.slice(4) : decode('projectName');
-      this.form.authUrl     = decode('authUrl');
-      this.form.domainName  = decode('domainName');
-      this.form.username    = decode('username');
-      this.form.regionName  = decode('regionName');
-      // Don't pre-fill password for security
+
+      if (data.cloudYaml) {
+        // Credential was saved in YAML mode – restore YAML view and content
+        this.showYaml    = true;
+        this.yamlContent = decode('cloudYaml');
+      } else {
+        // Credential was saved via the manual form
+        this.showYaml        = false;
+        this.form.authUrl    = decode('authUrl');
+        this.form.domainName = decode('domainName');
+        this.form.username   = decode('username');
+        this.form.regionName = decode('regionName');
+        // Don't pre-fill password for security
+      }
+
+      // Treat a previously saved credential as already verified
+      this.connectionTested = true;
+    },
+
+    toggleYamlMode() {
+      this.showYaml         = !this.showYaml;
+      this.connectionTested = false;
+      this.testResult       = null;
+      this.form.projectName = '';
     },
 
     async testConnection() {
-      this.testing    = true;
-      this.testResult = null;
+      this.testing          = true;
+      this.testResult       = null;
+      this.connectionTested = false;
 
       try {
         const api = this.buildApiService();
         await api.getToken();
-        this.testResult = { success: true };
+        this.testResult       = { success: true };
+        this.connectionTested = true;
+        // In YAML mode, extract the project name from the parsed config
+        if (this.showYaml) {
+          const config = this.parseCloudYaml();
+          if (config.projectName) {
+            this.form.projectName = config.projectName;
+          }
+        }
       } catch (e) {
         this.testResult = { success: false, error: e?.message || String(e) };
       } finally {
@@ -196,6 +271,18 @@ export default {
         domainName:  this.form.domainName,
         regionName:  this.form.regionName,
       }, this.$store);
+    },
+
+    onFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.yamlContent = e.target.result;
+        // Reset input so the same file can be re-selected
+        this.$refs.yamlFileInput.value = '';
+      };
+      reader.readAsText(file);
     },
 
     parseCloudYaml() {
@@ -363,7 +450,24 @@ export default {
   resize: vertical;
 }
 
+.yaml-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+
+  .form-label {
+    margin-bottom: 0;
+    flex: 1;
+  }
+}
+
+.project-name-detected {
+  margin-top: 12px;
+}
+
 .yaml-toggle {
+  margin-top: 8px;
   margin-bottom: 12px;
 }
 

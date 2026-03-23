@@ -173,6 +173,7 @@ clusterstacks:
     testConnection: Verbindung testen
     testSuccess: Verbindung erfolgreich
     testError: Verbindung fehlgeschlagen
+    uploadYaml: clouds.yaml hochladen
 
   quota:
     title: Quota-Validierung
