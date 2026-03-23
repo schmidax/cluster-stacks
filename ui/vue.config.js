@@ -1,5 +1,3 @@
-const { defineConfig } = require('@vue/cli-service');
+const config = require('@rancher/shell/vue.config');
 
-module.exports = defineConfig({
-  transpileDependencies: true,
-});
+module.exports = config(__dirname, { excludes: [] });

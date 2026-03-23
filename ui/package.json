@@ -3,17 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "description": "Rancher Dashboard UI Extension for ClusterStacks with OpenStack integration",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "build": "yarn --cwd pkg/clusterstacks build",
-    "dev": "yarn --cwd pkg/clusterstacks dev",
-    "lint": "yarn --cwd pkg/clusterstacks lint",
-    "publish-pkg": "yarn --cwd pkg/clusterstacks publish-pkg"
+    "dev": "NODE_ENV=dev ./node_modules/.bin/vue-cli-service serve",
+    "build": "./node_modules/.bin/vue-cli-service build",
+    "clean": "./node_modules/@rancher/shell/scripts/clean",
+    "build-pkg": "./node_modules/@rancher/shell/scripts/build-pkg.sh",
+    "serve-pkgs": "./node_modules/@rancher/shell/scripts/serve-pkgs",
+    "publish-pkgs": "./node_modules/@rancher/shell/scripts/extension/publish",
+    "parse-tag-name": "./node_modules/@rancher/shell/scripts/extension/parse-tag-name",
+    "lint": "eslint --ext .js,.vue,.ts .",
+    "prepare": "yarn build-pkg clusterstacks"
   },
   "dependencies": {
-    "@rancher/shell": "0.6.2"
-  },
-  "devDependencies": {
     "@rancher/components": "0.3.0-alpha.1",
+    "@rancher/shell": "3.0.5-rc.3",
     "typescript": "~4.9.5"
   },
   "workspaces": [
