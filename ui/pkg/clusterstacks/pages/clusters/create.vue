@@ -15,7 +15,7 @@
 
 <script>
 import ClusterForm from '../../components/ClusterForm.vue';
-import { ROUTES } from '../../../config/clusterstacks';
+import { ROUTES } from '../../config/clusterstacks';
 
 export default {
   name: 'ClusterCreate',

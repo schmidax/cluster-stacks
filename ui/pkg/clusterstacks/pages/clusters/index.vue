@@ -65,7 +65,7 @@
 
 <script>
 import SortableTable from '@shell/components/SortableTable';
-import { ROUTES } from '../../../config/clusterstacks';
+import { ROUTES } from '../../config/clusterstacks';
 
 export default {
   name: 'ClustersIndex',

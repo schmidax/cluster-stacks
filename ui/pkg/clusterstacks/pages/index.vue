@@ -46,7 +46,7 @@
 </template>
 
 <script>
-import { ROUTES } from '../../config/clusterstacks';
+import { ROUTES } from '../config/clusterstacks';
 
 export default {
   name: 'ClusterStacksDashboard',

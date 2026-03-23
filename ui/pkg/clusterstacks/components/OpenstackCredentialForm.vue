@@ -94,7 +94,7 @@
 </template>
 
 <script>
-import LabeledInput from '@shell/components/form/LabeledInput';
+import LabeledInput from './LabeledInput.vue';
 import BusyButton   from './BusyButton.vue';
 import { OpenStackApiService } from '../services/openstack-api';
 

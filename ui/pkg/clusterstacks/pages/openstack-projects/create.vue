@@ -14,7 +14,7 @@
 
 <script>
 import OpenstackCredentialForm from '../../components/OpenstackCredentialForm.vue';
-import { ROUTES } from '../../../config/clusterstacks';
+import { ROUTES } from '../../config/clusterstacks';
 
 export default {
   name: 'OpenstackProjectCreate',

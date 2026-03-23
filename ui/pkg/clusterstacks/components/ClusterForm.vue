@@ -168,9 +168,9 @@
 </template>
 
 <script>
-import LabeledInput  from '@shell/components/form/LabeledInput';
+import LabeledInput  from './LabeledInput.vue';
 import LabeledSelect from '@shell/components/form/LabeledSelect';
-import Checkbox      from '@shell/components/form/Checkbox';
+import Checkbox      from './Checkbox.vue';
 import QuotaWarning  from './QuotaWarning.vue';
 import BusyButton    from './BusyButton.vue';
 import { OpenStackApiService } from '../services/openstack-api';

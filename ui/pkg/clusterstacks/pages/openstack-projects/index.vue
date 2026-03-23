@@ -45,7 +45,7 @@
 
 <script>
 import OpenstackResourceList from '../../components/OpenstackResourceList.vue';
-import { ROUTES } from '../../../config/clusterstacks';
+import { ROUTES } from '../../config/clusterstacks';
 
 export default {
   name: 'OpenstackProjectsIndex',
