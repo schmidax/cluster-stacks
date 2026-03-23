@@ -358,7 +358,14 @@ export class OpenStackApiService {
       throw new Error('No project ID available for network quota query');
     }
     const response = await this.makeRequest('network', `/v2.0/quotas/${pid}/details`);
-    return response.quota as NetworkQuota;
+    // Neutron's /details endpoint uses 'used' instead of 'in_use'; normalize to match QuotaItem
+    const quota = response.quota as Record<string, any>;
+    for (const key of Object.keys(quota)) {
+      if (quota[key] && typeof quota[key] === 'object' && 'used' in quota[key] && !('in_use' in quota[key])) {
+        quota[key].in_use = quota[key].used;
+      }
+    }
+    return quota as NetworkQuota;
   }
 
   // ─── Cinder (Block Storage) ───────────────────────────────────────────────
