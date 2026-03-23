@@ -74,7 +74,7 @@ export default {
         });
         const csoNamespaces = (nsResponse?.items || [])
           .map((ns) => ns.metadata.name)
-          .filter((name) => name.startsWith('cso-'));
+          .filter((name) => name.startsWith('cso-') && name !== 'cso-system');
 
         // For each cso-* namespace, try to fetch the secret named "openstack"
         const results = await Promise.allSettled(
