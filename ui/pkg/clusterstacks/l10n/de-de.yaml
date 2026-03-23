@@ -153,8 +153,6 @@ clusterstacks:
   credentialCreate:
     title: OpenStack-Anmeldedaten hinzufügen
     editTitle: OpenStack-Anmeldedaten bearbeiten
-    name: Name der Anmeldedaten
-    namePlaceholder: z.B. mein-openstack-prod
     authUrl: Auth-URL (Keystone-Endpunkt)
     authUrlPlaceholder: https://keystone.example.com:5000
     domainName: Benutzerdomäne
@@ -163,8 +161,9 @@ clusterstacks:
     usernamePlaceholder: Ihr OpenStack-Benutzername
     password: Passwort
     passwordPlaceholder: Ihr OpenStack-Passwort
-    projectName: Projektname
+    projectName: OpenStack-Projektname
     projectNamePlaceholder: mein-projekt
+    namespaceHint: "Anmeldedaten werden gespeichert in Namespace"
     region: Region
     regionPlaceholder: RegionOne
     cloudYaml: Oder clouds.yaml-Inhalt einfügen

@@ -153,8 +153,6 @@ clusterstacks:
   credentialCreate:
     title: Add OpenStack Credentials
     editTitle: Edit OpenStack Credentials
-    name: Credential Name
-    namePlaceholder: e.g. my-openstack-prod
     authUrl: Auth URL (Keystone Endpoint)
     authUrlPlaceholder: https://keystone.example.com:5000
     domainName: User Domain
@@ -163,8 +161,9 @@ clusterstacks:
     usernamePlaceholder: your-openstack-username
     password: Password
     passwordPlaceholder: your-openstack-password
-    projectName: Project Name
+    projectName: OpenStack Project Name
     projectNamePlaceholder: my-project
+    namespaceHint: "Credentials will be stored in namespace"
     region: Region
     regionPlaceholder: RegionOne
     cloudYaml: Or paste clouds.yaml content

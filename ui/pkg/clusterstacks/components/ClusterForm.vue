@@ -330,13 +330,47 @@ export default {
     },
 
     async initOpenStackApi() {
-      // Try to load credential from store
+      // Try to load the "openstack" secret from the cluster's own namespace first,
+      // then fall back to searching all cso-* namespaces.
       try {
-        const secrets = await this.$store.dispatch('management/request', {
-          method: 'GET',
-          url:    '/api/v1/secrets?labelSelector=clusterstack.x-k8s.io%2Fcredential%3Dopenstack',
-        });
-        const secret = secrets?.items?.[0];
+        let secret = null;
+
+        // 1. Try the cluster's own namespace (works for existing clusters where the
+        //    credentials have already been copied / projected into the cluster ns)
+        if (this.form.namespace) {
+          try {
+            secret = await this.$store.dispatch('management/request', {
+              method: 'GET',
+              url:    `/api/v1/namespaces/${this.form.namespace}/secrets/openstack`,
+            });
+          } catch {
+            // Not found in cluster namespace – fall through to cso-* search
+          }
+        }
+
+        // 2. Search all cso-* namespaces for an "openstack" secret
+        if (!secret) {
+          const nsResponse = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    '/api/v1/namespaces',
+          });
+          const csoNamespaces = (nsResponse?.items || [])
+            .map((ns) => ns.metadata.name)
+            .filter((name) => name.startsWith('cso-'));
+
+          for (const ns of csoNamespaces) {
+            try {
+              secret = await this.$store.dispatch('management/request', {
+                method: 'GET',
+                url:    `/api/v1/namespaces/${ns}/secrets/openstack`,
+              });
+              break;
+            } catch {
+              // Not found in this namespace
+            }
+          }
+        }
+
         if (secret) {
           const decode = (k) => secret.data?.[k] ? atob(secret.data[k]) : '';
           this.openstackApi = new OpenStackApiService({

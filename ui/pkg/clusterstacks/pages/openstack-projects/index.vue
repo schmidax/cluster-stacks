@@ -67,18 +67,35 @@ export default {
   methods: {
     async loadCredentials() {
       try {
-        // Credentials are stored as Kubernetes Secrets with label
-        // clusterstack.x-k8s.io/credential=openstack
-        const secrets = await this.$store.dispatch('management/request', {
+        // List all namespaces that start with "cso-"
+        const nsResponse = await this.$store.dispatch('management/request', {
           method: 'GET',
-          url:    '/api/v1/secrets?labelSelector=clusterstack.x-k8s.io%2Fcredential%3Dopenstack',
+          url:    '/api/v1/namespaces',
         });
-        this.credentials = (secrets?.items || []).map((s) => ({
-          name:      s.metadata.name,
-          namespace: s.metadata.namespace,
-          authUrl:   atob(s.data?.authUrl || ''),
-          raw:       s,
-        }));
+        const csoNamespaces = (nsResponse?.items || [])
+          .map((ns) => ns.metadata.name)
+          .filter((name) => name.startsWith('cso-'));
+
+        // For each cso-* namespace, try to fetch the secret named "openstack"
+        const results = await Promise.allSettled(
+          csoNamespaces.map((ns) => this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/api/v1/namespaces/${ns}/secrets/openstack`,
+          })),
+        );
+
+        this.credentials = results
+          .filter((r) => r.status === 'fulfilled')
+          .map((r) => {
+            const s = r.value;
+            const ns = s.metadata.namespace;
+            return {
+              name:      ns.startsWith('cso-') ? ns.slice(4) : ns,
+              namespace: ns,
+              authUrl:   atob(s.data?.authUrl || ''),
+              raw:       s,
+            };
+          });
       } catch {
         this.credentials = [];
       }
@@ -96,18 +113,18 @@ export default {
     editCredential(cred) {
       this.$router.push({
         name:  ROUTES.OPENSTACK_CREATE,
-        query: { name: cred.name, namespace: cred.namespace },
+        query: { namespace: cred.namespace },
       });
     },
 
     async deleteCredential(cred) {
-      if (!window.confirm(`Delete credential "${cred.name}"?`)) {
+      if (!window.confirm(`Delete credentials for project "${cred.name}"?`)) {
         return;
       }
       try {
         await this.$store.dispatch('management/request', {
           method: 'DELETE',
-          url:    `/api/v1/namespaces/${cred.namespace}/secrets/${cred.name}`,
+          url:    `/api/v1/namespaces/${cred.namespace}/secrets/openstack`,
         });
         await this.loadCredentials();
         if (this.selectedCredential === cred.name) {

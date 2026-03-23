@@ -29,17 +29,17 @@ export default {
 
   computed: {
     isEdit() {
-      return !!(this.$route.query.name && this.$route.query.namespace);
+      return !!this.$route.query.namespace;
     },
   },
 
   async mounted() {
-    const { name, namespace } = this.$route.query;
-    if (name && namespace) {
+    const { namespace } = this.$route.query;
+    if (namespace) {
       try {
         this.existing = await this.$store.dispatch('management/request', {
           method: 'GET',
-          url:    `/api/v1/namespaces/${namespace}/secrets/${name}`,
+          url:    `/api/v1/namespaces/${namespace}/secrets/openstack`,
         });
       } catch {
         // ignore

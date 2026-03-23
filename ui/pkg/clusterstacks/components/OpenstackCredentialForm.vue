@@ -4,12 +4,15 @@
     <div v-if="!showYaml" class="manual-form">
       <div class="form-row">
         <LabeledInput
-          v-model="form.name"
-          :label="t('clusterstacks.credentialCreate.name')"
-          :placeholder="t('clusterstacks.credentialCreate.namePlaceholder')"
+          v-model="form.projectName"
+          :label="t('clusterstacks.credentialCreate.projectName')"
+          :placeholder="t('clusterstacks.credentialCreate.projectNamePlaceholder')"
           :required="true"
           :disabled="isEdit"
         />
+        <div class="namespace-hint">
+          {{ t('clusterstacks.credentialCreate.namespaceHint') }}: <code>cso-{{ form.projectName || '…' }}</code>
+        </div>
       </div>
       <div class="form-row">
         <LabeledInput
@@ -42,13 +45,6 @@
           :label="t('clusterstacks.credentialCreate.password')"
           :placeholder="t('clusterstacks.credentialCreate.passwordPlaceholder')"
           type="password"
-        />
-      </div>
-      <div class="form-row">
-        <LabeledInput
-          v-model="form.projectName"
-          :label="t('clusterstacks.credentialCreate.projectName')"
-          :placeholder="t('clusterstacks.credentialCreate.projectNamePlaceholder')"
         />
       </div>
     </div>
@@ -119,12 +115,11 @@ export default {
       yamlError:   null,
 
       form: {
-        name:        '',
+        projectName: '',
         authUrl:     '',
         domainName:  'Default',
         username:    '',
         password:    '',
-        projectName: '',
         regionName:  '',
       },
 
@@ -139,11 +134,16 @@ export default {
       return !!this.existing;
     },
 
+    // The Kubernetes namespace where the secret is stored: cso-{projectName}
+    targetNamespace() {
+      return `cso-${this.form.projectName}`;
+    },
+
     canSave() {
       if (this.showYaml) {
         return !!this.yamlContent;
       }
-      return !!(this.form.name && this.form.authUrl);
+      return !!(this.form.projectName && this.form.authUrl);
     },
   },
 
@@ -157,11 +157,12 @@ export default {
     populateFromExisting() {
       const data = this.existing.data || {};
       const decode = (k) => data[k] ? atob(data[k]) : '';
-      this.form.name        = this.existing.metadata.name;
+      // Derive projectName from namespace by stripping the "cso-" prefix
+      const ns = this.existing.metadata.namespace || '';
+      this.form.projectName = ns.startsWith('cso-') ? ns.slice(4) : decode('projectName');
       this.form.authUrl     = decode('authUrl');
       this.form.domainName  = decode('domainName');
       this.form.username    = decode('username');
-      this.form.projectName = decode('projectName');
       this.form.regionName  = decode('regionName');
       // Don't pre-fill password for security
     },
@@ -235,23 +236,54 @@ export default {
 
       try {
         const secretData = this.buildSecretData();
-        const method  = this.isEdit ? 'PUT' : 'POST';
-        const url     = this.isEdit
-          ? `/api/v1/namespaces/${this.existing.metadata.namespace}/secrets/${this.form.name}`
-          : `/api/v1/namespaces/default/secrets`;
 
-        await this.$store.dispatch('management/request', {
-          method,
-          url,
-          headers: { 'Content-Type': 'application/json' },
-          data:    JSON.stringify(secretData),
-        });
+        if (this.isEdit) {
+          // Update existing secret in the existing namespace
+          await this.$store.dispatch('management/request', {
+            method:  'PUT',
+            url:     `/api/v1/namespaces/${this.existing.metadata.namespace}/secrets/openstack`,
+            headers: { 'Content-Type': 'application/json' },
+            data:    JSON.stringify(secretData),
+          });
+        } else {
+          // Ensure the cso-{projectName} namespace exists, create it if not
+          await this.ensureNamespace(this.targetNamespace);
+
+          // Create the secret named "openstack" in the new namespace
+          await this.$store.dispatch('management/request', {
+            method:  'POST',
+            url:     `/api/v1/namespaces/${this.targetNamespace}/secrets`,
+            headers: { 'Content-Type': 'application/json' },
+            data:    JSON.stringify(secretData),
+          });
+        }
 
         this.$emit('save');
       } catch (e) {
         console.error('Failed to save credentials:', e); // eslint-disable-line no-console
       } finally {
         this.saving = false;
+      }
+    },
+
+    async ensureNamespace(name) {
+      try {
+        await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/api/v1/namespaces/${name}`,
+        });
+      } catch {
+        // Namespace does not exist – create it
+        await this.$store.dispatch('management/request', {
+          method:  'POST',
+          url:     '/api/v1/namespaces',
+          headers: { 'Content-Type': 'application/json' },
+          data:    JSON.stringify({
+            apiVersion: 'v1',
+            kind:       'Namespace',
+            metadata:   { name },
+          }),
+        });
       }
     },
 
@@ -262,10 +294,8 @@ export default {
         apiVersion: 'v1',
         kind:       'Secret',
         metadata:   {
-          name: this.form.name,
-          labels: {
-            'clusterstack.x-k8s.io/credential': 'openstack',
-          },
+          name:      'openstack',
+          namespace: this.isEdit ? this.existing.metadata.namespace : this.targetNamespace,
         },
         type: 'Opaque',
         data: {
@@ -290,6 +320,19 @@ export default {
 <style lang="scss" scoped>
 .credential-form {
   max-width: 700px;
+}
+
+.namespace-hint {
+  margin-top: 4px;
+  font-size: 0.85em;
+  color: var(--muted);
+
+  code {
+    font-family: monospace;
+    background: var(--accent-btn);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
 }
 
 .form-row {
