@@ -111,7 +111,7 @@ export function init($plugin: IPlugin, store: any) {
   basicType([
     NAV.OPENSTACK,
     NAV.OPENSTACK_RESOURCES,
-  ], 'clusterstacks.nav.openstackGroup');
+  ], 'OpenStack');
 
   // Weight the nav types so they appear in the right order
   weightType(NAV.DASHBOARD,           100, true);

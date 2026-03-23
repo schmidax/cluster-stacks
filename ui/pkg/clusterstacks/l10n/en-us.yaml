@@ -101,8 +101,7 @@ clusterstacks:
       region: Region
     credentials:
       title: OpenStack Credentials
-      filterByProject: Filter by Project
-      allProjects: All Projects
+      noProject: No Project
     resources:
       title: Resources
       credential: Credential

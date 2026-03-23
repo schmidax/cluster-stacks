@@ -101,8 +101,7 @@ clusterstacks:
       region: Region
     credentials:
       title: OpenStack-Anmeldedaten
-      filterByProject: Nach Projekt filtern
-      allProjects: Alle Projekte
+      noProject: Kein Projekt
     resources:
       title: Ressourcen
       credential: Anmeldedaten

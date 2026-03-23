@@ -7,36 +7,34 @@
       </button>
     </div>
 
-    <!-- Rancher project filter -->
-    <div v-if="projects.length" class="project-filter">
-      <label class="project-filter-label">{{ t('clusterstacks.openstack.credentials.filterByProject') }}</label>
-      <select v-model="selectedProject" class="project-select">
-        <option value="">{{ t('clusterstacks.openstack.credentials.allProjects') }}</option>
-        <option v-for="p in projects" :key="p.id" :value="p.id">
-          {{ p.spec && p.spec.displayName ? p.spec.displayName : p.id }}
-        </option>
-      </select>
-    </div>
-
-    <div v-if="!filteredCredentials.length" class="no-data">
+    <div v-if="!credentials.length" class="no-data">
       {{ t('clusterstacks.openstack.noData') }}
     </div>
 
-    <div v-else class="credential-list">
+    <div v-else>
       <div
-        v-for="cred in filteredCredentials"
-        :key="cred.name"
-        class="credential-item"
+        v-for="group in groupedCredentials"
+        :key="group.projectId"
+        class="project-group"
       >
-        <div class="cred-name">{{ cred.name }}</div>
-        <div class="cred-detail">{{ cred.authUrl }}</div>
-        <div class="cred-actions">
-          <button class="btn btn-sm role-secondary" @click="editCredential(cred)">
-            {{ t('clusterstacks.common.edit') }}
-          </button>
-          <button class="btn btn-sm role-danger" @click="deleteCredential(cred)">
-            {{ t('clusterstacks.common.delete') }}
-          </button>
+        <h2 class="project-group-title">{{ group.projectName }}</h2>
+        <div class="credential-list">
+          <div
+            v-for="cred in group.credentials"
+            :key="cred.name"
+            class="credential-item"
+          >
+            <div class="cred-name">{{ cred.name }}</div>
+            <div class="cred-detail">{{ cred.authUrl }}</div>
+            <div class="cred-actions">
+              <button class="btn btn-sm role-secondary" @click="editCredential(cred)">
+                {{ t('clusterstacks.common.edit') }}
+              </button>
+              <button class="btn btn-sm role-danger" @click="deleteCredential(cred)">
+                {{ t('clusterstacks.common.delete') }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -52,21 +50,66 @@ export default {
 
   data() {
     return {
-      credentials:     [],
-      projects:        [],
-      selectedProject: '',
+      credentials: [],
+      projects:    [],
     };
   },
 
   computed: {
-    filteredCredentials() {
-      if (!this.selectedProject) {
-        return this.credentials;
+    projectMap() {
+      // Map from project id (may be "clusterId:projectId" or short id) to display name
+      const map = {};
+
+      for (const p of this.projects) {
+        const displayName = p.spec?.displayName || p.id || p.metadata?.name;
+
+        // Rancher v3 projects have an id like "c-xxxxx:p-xxxxx"
+        if (p.id) {
+          map[p.id] = displayName;
+        }
+        if (p.metadata?.name) {
+          map[p.metadata.name] = displayName;
+        }
       }
 
-      return this.credentials.filter(
-        (cred) => cred.projectId === this.selectedProject,
-      );
+      return map;
+    },
+
+    groupedCredentials() {
+      const groups = {};
+      const noProjectKey = '__no_project__';
+
+      for (const cred of this.credentials) {
+        const key = cred.projectId || noProjectKey;
+        if (!groups[key]) {
+          let projectName;
+
+          if (key === noProjectKey) {
+            projectName = this.t('clusterstacks.openstack.credentials.noProject');
+          } else {
+            projectName = this.projectMap[key] || key;
+          }
+
+          groups[key] = {
+            projectId:   key,
+            projectName,
+            credentials: [],
+          };
+        }
+        groups[key].credentials.push(cred);
+      }
+
+      // Sort: real projects first (alphabetically), then the no-project bucket
+      return Object.values(groups).sort((a, b) => {
+        if (a.projectId === noProjectKey) {
+          return 1;
+        }
+        if (b.projectId === noProjectKey) {
+          return -1;
+        }
+
+        return a.projectName.localeCompare(b.projectName);
+      });
     },
   },
 
@@ -94,10 +137,11 @@ export default {
 
         this.credentials = results
           .filter((r) => r.status === 'fulfilled')
-          .map((r, i) => {
+          .map((r) => {
             const s = r.value;
             const ns = s.metadata.namespace;
             const nsObj = csoNamespaces.find((n) => n.metadata.name === ns);
+            // Rancher annotates namespaces with the full "clusterId:projectId"
             const projectId = nsObj?.metadata?.annotations?.['field.cattle.io/projectId'] || '';
             const cloudsYaml = atob(s.data?.['clouds.yaml'] || '');
             let authUrl = '';
@@ -179,26 +223,25 @@ export default {
   margin-bottom: 20px;
 }
 
-.project-filter {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-
-  .project-filter-label {
-    font-weight: 600;
-    white-space: nowrap;
-  }
-
-  .project-select {
-    min-width: 200px;
-  }
-}
-
 .no-data {
   padding: 40px;
   text-align: center;
   color: var(--muted);
+}
+
+.project-group {
+  margin-bottom: 28px;
+}
+
+.project-group-title {
+  font-size: 1em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
 }
 
 .credential-list {
