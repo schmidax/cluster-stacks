@@ -374,7 +374,7 @@ export class OpenStackApiService {
     if (!pid) {
       throw new Error('No project ID available for volume quota query');
     }
-    const response = await this.makeRequest('volumev3', `/os-quota-sets/${pid}/detail`);
+    const response = await this.makeRequest('volumev3', `/os-quota-sets/${pid}?usage=true`);
     return response.quota_set as VolumeQuota;
   }
 
