@@ -6,6 +6,7 @@
 
     <OpenstackCredentialForm
       :existing="existing"
+      :projects="projects"
       @save="onSave"
       @cancel="onCancel"
     />
@@ -24,6 +25,7 @@ export default {
   data() {
     return {
       existing: null,
+      projects: [],
     };
   },
 
@@ -34,20 +36,37 @@ export default {
   },
 
   async mounted() {
-    const { namespace } = this.$route.query;
-    if (namespace) {
-      try {
-        this.existing = await this.$store.dispatch('management/request', {
-          method: 'GET',
-          url:    `/api/v1/namespaces/${namespace}/secrets/openstack`,
-        });
-      } catch {
-        // ignore
-      }
-    }
+    await Promise.all([this.loadExisting(), this.loadProjects()]);
   },
 
   methods: {
+    async loadExisting() {
+      const { namespace } = this.$route.query;
+      if (namespace) {
+        try {
+          this.existing = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/api/v1/namespaces/${namespace}/secrets/openstack`,
+          });
+        } catch {
+          // ignore
+        }
+      }
+    },
+
+    async loadProjects() {
+      try {
+        const clusterId = this.$route.params.cluster;
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/v3/projects?clusterId=${clusterId}`,
+        });
+        this.projects = resp?.data || [];
+      } catch {
+        this.projects = [];
+      }
+    },
+
     onSave() {
       this.$router.push({ name: ROUTES.OPENSTACK });
     },

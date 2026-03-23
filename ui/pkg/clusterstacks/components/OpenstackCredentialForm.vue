@@ -1,5 +1,16 @@
 <template>
   <div class="credential-form">
+    <!-- Rancher project selector (new credentials only) -->
+    <div v-if="!isEdit && projects.length" class="form-row">
+      <label class="form-label">{{ t('clusterstacks.credentialCreate.rancherProject') }}</label>
+      <select v-model="selectedProjectId" class="project-select">
+        <option value="">{{ t('clusterstacks.credentialCreate.rancherProjectPlaceholder') }}</option>
+        <option v-for="p in projects" :key="p.id" :value="p.id">
+          {{ p.spec && p.spec.displayName ? p.spec.displayName : p.id }}
+        </option>
+      </select>
+    </div>
+
     <!-- clouds.yaml paste / upload -->
     <div class="form-row">
       <div class="yaml-header">
@@ -79,15 +90,21 @@ export default {
       type:    Object,
       default: null,
     },
+
+    projects: {
+      type:    Array,
+      default: () => [],
+    },
   },
 
   emits: ['save', 'cancel'],
 
   data() {
     return {
-      yamlContent:      '',
-      yamlError:        null,
-      connectionTested: false,
+      yamlContent:       '',
+      yamlError:         null,
+      connectionTested:  false,
+      selectedProjectId: '',
 
       form: {
         projectName: '',
@@ -240,6 +257,10 @@ export default {
         });
       } catch {
         // Namespace does not exist – create it
+        const metadata = { name };
+        if (this.selectedProjectId) {
+          metadata.annotations = { 'field.cattle.io/projectId': this.selectedProjectId };
+        }
         await this.$store.dispatch('management/request', {
           method:  'POST',
           url:     '/api/v1/namespaces',
@@ -247,7 +268,7 @@ export default {
           data:    JSON.stringify({
             apiVersion: 'v1',
             kind:       'Namespace',
-            metadata:   { name },
+            metadata,
           }),
         });
       }
@@ -279,6 +300,15 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.project-select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--body-text);
+}
+
 .credential-form {
   max-width: 700px;
 }

@@ -184,6 +184,8 @@ clusterstacks:
     regionPlaceholder: RegionOne
     cloudYaml: Or paste clouds.yaml content
     cloudYamlPlaceholder: "clouds:\n  openstack:\n    auth:\n      ..."
+    rancherProject: Rancher Project
+    rancherProjectPlaceholder: Select a project...
     save: Save Credentials
     cancel: Cancel
     testConnection: Test Connection

@@ -259,8 +259,9 @@ export default {
   background: var(--box-bg);
 
   .cred-name {
-    font-weight: 600;
     flex: 0 0 200px;
+    color: var(--muted);
+    font-size: 0.85em;
   }
 
   .cred-detail {
