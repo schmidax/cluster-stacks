@@ -69,10 +69,11 @@ export class OpenStackApiService {
     const url = `${PROXY_BASE}/${this.config.authUrl.replace(/^https?:\/\//, '')}/v3/auth/tokens`;
 
     const response = await this.store.dispatch('management/request', {
-      method:  'POST',
+      method:               'POST',
       url,
-      headers: { 'Content-Type': 'application/json' },
-      data:    JSON.stringify(authBody),
+      headers:              { 'Content-Type': 'application/json' },
+      data:                 JSON.stringify(authBody),
+      redirectUnauthorized: false,
     });
 
     this.token = response.headers?.['x-subject-token'] || response._headers?.['x-subject-token'];
@@ -156,13 +157,14 @@ export class OpenStackApiService {
     const proxyUrl = `${PROXY_BASE}/${baseUrl.replace(/^https?:\/\//, '')}${path}`;
 
     return await this.store.dispatch('management/request', {
-      method,
-      url:     proxyUrl,
-      headers: {
+      method:               method,
+      url:                  proxyUrl,
+      headers:              {
         'X-Auth-Token':  this.token,
         'Content-Type':  'application/json',
       },
-      data: data ? JSON.stringify(data) : undefined,
+      data:                 data ? JSON.stringify(data) : undefined,
+      redirectUnauthorized: false,
     });
   }
 
@@ -295,9 +297,10 @@ export class OpenStackApiService {
   async getProjects(): Promise<OpenStackProject[]> {
     const url = `${PROXY_BASE}/${this.config.authUrl.replace(/^https?:\/\//, '')}/v3/auth/projects`;
     const response = await this.store.dispatch('management/request', {
-      method:  'GET',
+      method:               'GET',
       url,
-      headers: { 'X-Auth-Token': await this.getToken() },
+      headers:              { 'X-Auth-Token': await this.getToken() },
+      redirectUnauthorized: false,
     });
     return response.projects || [];
   }
@@ -305,9 +308,10 @@ export class OpenStackApiService {
   async getRegions(): Promise<OpenStackRegion[]> {
     const url = `${PROXY_BASE}/${this.config.authUrl.replace(/^https?:\/\//, '')}/v3/regions`;
     const response = await this.store.dispatch('management/request', {
-      method:  'GET',
+      method:               'GET',
       url,
-      headers: { 'X-Auth-Token': await this.getToken() },
+      headers:              { 'X-Auth-Token': await this.getToken() },
+      redirectUnauthorized: false,
     });
     return response.regions || [];
   }
