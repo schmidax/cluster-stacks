@@ -208,10 +208,10 @@ export default {
       const ns = this.existing.metadata.namespace || '';
       this.form.projectName = ns.startsWith('cso-') ? ns.slice(4) : decode('projectName');
 
-      if (data.cloudYaml) {
+      if (data['clouds.yaml']) {
         // Credential was saved in YAML mode – restore YAML view and content
         this.showYaml    = true;
-        this.yamlContent = decode('cloudYaml');
+        this.yamlContent = decode('clouds.yaml');
       } else {
         // Credential was saved via the manual form
         this.showYaml        = false;
@@ -392,7 +392,7 @@ export default {
           projectName: encode(this.form.projectName),
           domainName:  encode(this.form.domainName),
           regionName:  encode(this.form.regionName),
-          ...(this.showYaml ? { cloudYaml: encode(this.yamlContent) } : {}),
+          ...(this.showYaml ? { 'clouds.yaml': encode(this.yamlContent) } : {}),
         },
       };
     },
