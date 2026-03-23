@@ -61,7 +61,7 @@ interface ParsedCloud {
  *   user_domain_name / domain_name, region_name,
  *   application_credential_id, application_credential_secret
  */
-function parseCloudsYaml(text: string): ParsedCloud {
+export function parseCloudsYaml(text: string): ParsedCloud {
   const seen: Record<string, string> = {};
 
   for (const rawLine of text.split('\n')) {

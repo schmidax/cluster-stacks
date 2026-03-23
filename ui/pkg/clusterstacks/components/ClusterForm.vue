@@ -373,14 +373,7 @@ export default {
 
         if (secret) {
           const decode = (k) => secret.data?.[k] ? atob(secret.data[k]) : '';
-          this.openstackApi = new OpenStackApiService({
-            authUrl:     decode('authUrl'),
-            username:    decode('username'),
-            password:    decode('password'),
-            projectName: decode('projectName'),
-            domainName:  decode('domainName'),
-            regionName:  decode('regionName'),
-          }, this.$store);
+          this.openstackApi = new OpenStackApiService(decode('clouds.yaml'), this.$store);
 
           await Promise.all([
             this.loadFlavors(),

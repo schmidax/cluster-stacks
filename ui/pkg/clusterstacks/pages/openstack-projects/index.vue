@@ -46,6 +46,7 @@
 <script>
 import OpenstackResourceList from '../../components/OpenstackResourceList.vue';
 import { ROUTES } from '../../config/clusterstacks';
+import { parseCloudsYaml } from '../../services/openstack-api';
 
 export default {
   name: 'OpenstackProjectsIndex',
@@ -89,10 +90,16 @@ export default {
           .map((r) => {
             const s = r.value;
             const ns = s.metadata.namespace;
+            const cloudsYaml = atob(s.data?.['clouds.yaml'] || '');
+            let authUrl = '';
+            try {
+              authUrl = parseCloudsYaml(cloudsYaml).authUrl;
+            } catch {}
             return {
               name:      ns.startsWith('cso-') ? ns.slice(4) : ns,
               namespace: ns,
-              authUrl:   atob(s.data?.authUrl || ''),
+              authUrl,
+              cloudsYaml,
               raw:       s,
             };
           });

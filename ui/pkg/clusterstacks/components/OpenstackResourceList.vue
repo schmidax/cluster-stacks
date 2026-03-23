@@ -242,14 +242,7 @@ export default {
       if (!this.credential) {
         return;
       }
-      this.api = new OpenStackApiService({
-        authUrl:     this.credential.authUrl,
-        username:    this.credential.username,
-        password:    this.credential.password,
-        projectName: this.credential.projectName,
-        domainName:  this.credential.domainName,
-        regionName:  this.credential.regionName,
-      }, this.$store);
+      this.api = new OpenStackApiService(this.credential.cloudsYaml, this.$store);
 
       this.load();
     },
