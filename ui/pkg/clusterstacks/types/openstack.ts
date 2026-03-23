@@ -190,6 +190,12 @@ export interface NetworkQuota {
   security_group_rule?: QuotaItem;
 }
 
+export interface VolumeQuota {
+  volumes?: QuotaItem;
+  gigabytes?: QuotaItem;
+  snapshots?: QuotaItem;
+}
+
 // Swift (Object Storage)
 
 export interface SwiftContainer {

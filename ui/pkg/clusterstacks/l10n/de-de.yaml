@@ -104,51 +104,59 @@ clusterstacks:
         securityGroups: Sicherheitsgruppen
         floatingIPs: Floating IPs
         volumes: Volumes
-        flavors: Flavors
-        images: Images
+        quotas: Kontingente
       instances:
         noData: Keine Instanzen gefunden.
         name: Name
         status: Status
         flavor: Flavor
-        image: Image
+        ips: IP-Adressen
+        keyName: Schlüsselpaar
         created: Erstellt
       networks:
         noData: Keine Netzwerke gefunden.
         name: Name
         status: Status
         external: Extern
+        adminState: Admin-Status
         subnets: Subnetze
         shared: Geteilt
       securityGroups:
         noData: Keine Sicherheitsgruppen gefunden.
         name: Name
         description: Beschreibung
-        rules: Regeln
+        rulesCount: Regeln
       floatingIPs:
         noData: Keine Floating IPs gefunden.
         address: Floating IP
         fixed: Feste IP
         status: Status
+        router: Router-ID
       volumes:
         noData: Keine Volumes gefunden.
         name: Name
         status: Status
         size: Größe (GiB)
         type: Typ
-      flavors:
-        noData: Keine Flavors gefunden.
-        name: Name
-        vcpus: vCPUs
+        az: Verfügbarkeitszone
+        attachedTo: Angehängt an
+      quotas:
+        compute: Compute
+        network: Netzwerk
+        storage: Block Storage
+        available: verfügbar
+        instances: Instanzen
+        cores: vCPUs
         ram: RAM (MiB)
-        disk: Disk (GiB)
-      images:
-        noData: Keine Images gefunden.
-        name: Name
-        status: Status
-        visibility: Sichtbarkeit
-        diskFormat: Format
-        size: Größe
+        keyPairs: Schlüsselpaare
+        networks: Netzwerke
+        subnets: Subnetze
+        floatingIPs: Floating IPs
+        securityGroups: Sicherheitsgruppen
+        routers: Router
+        volumes: Volumes
+        gigabytes: Festplatte (GiB)
+        snapshots: Snapshots
 
   credentialCreate:
     title: OpenStack-Anmeldedaten hinzufügen

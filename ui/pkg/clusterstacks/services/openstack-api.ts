@@ -23,6 +23,7 @@ import {
   OpenStackVolume,
   OpenStackQuota,
   NetworkQuota,
+  VolumeQuota,
   SwiftContainer,
   OpenStackProject,
   OpenStackRegion,
@@ -365,6 +366,16 @@ export class OpenStackApiService {
   async getVolumes(): Promise<OpenStackVolume[]> {
     const response = await this.makeRequest('volumev3', '/volumes/detail');
     return response.volumes || [];
+  }
+
+  async getVolumeQuota(projectId?: string): Promise<VolumeQuota> {
+    await this.getToken();
+    const pid = projectId || this.currentProjectId;
+    if (!pid) {
+      throw new Error('No project ID available for volume quota query');
+    }
+    const response = await this.makeRequest('volumev3', `/os-quota-sets/${pid}/detail`);
+    return response.quota_set as VolumeQuota;
   }
 
   // ─── Glance (Image) ───────────────────────────────────────────────────────

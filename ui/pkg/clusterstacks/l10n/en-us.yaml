@@ -104,51 +104,59 @@ clusterstacks:
         securityGroups: Security Groups
         floatingIPs: Floating IPs
         volumes: Volumes
-        flavors: Flavors
-        images: Images
+        quotas: Quotas
       instances:
         noData: No instances found.
         name: Name
         status: Status
         flavor: Flavor
-        image: Image
+        ips: IP Addresses
+        keyName: Key Pair
         created: Created
       networks:
         noData: No networks found.
         name: Name
         status: Status
         external: External
+        adminState: Admin State
         subnets: Subnets
         shared: Shared
       securityGroups:
         noData: No security groups found.
         name: Name
         description: Description
-        rules: Rules
+        rulesCount: Rules
       floatingIPs:
         noData: No floating IPs found.
         address: Floating IP
         fixed: Fixed IP
         status: Status
+        router: Router ID
       volumes:
         noData: No volumes found.
         name: Name
         status: Status
         size: Size (GiB)
         type: Type
-      flavors:
-        noData: No flavors found.
-        name: Name
-        vcpus: vCPUs
+        az: Availability Zone
+        attachedTo: Attached To
+      quotas:
+        compute: Compute
+        network: Network
+        storage: Block Storage
+        available: available
+        instances: Instances
+        cores: vCPUs
         ram: RAM (MiB)
-        disk: Disk (GiB)
-      images:
-        noData: No images found.
-        name: Name
-        status: Status
-        visibility: Visibility
-        diskFormat: Format
-        size: Size
+        keyPairs: Key Pairs
+        networks: Networks
+        subnets: Subnets
+        floatingIPs: Floating IPs
+        securityGroups: Security Groups
+        routers: Routers
+        volumes: Volumes
+        gigabytes: Disk (GiB)
+        snapshots: Snapshots
 
   credentialCreate:
     title: Add OpenStack Credentials
