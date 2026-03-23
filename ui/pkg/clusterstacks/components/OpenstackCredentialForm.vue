@@ -251,7 +251,15 @@ export default {
           }
         }
       } catch (e) {
-        this.testResult = { success: false, error: e?.message || String(e) };
+        // Rancher's store throws an HTTP response object, not a plain Error.
+        // Try common paths before falling back to String(e).
+        const errMsg = e?.data?.message
+          || e?.data?.error_description
+          || e?.data?.error
+          || e?.message
+          || (e?.status ? `HTTP ${e.status} ${e.statusText || ''}`.trim() : null)
+          || String(e);
+        this.testResult = { success: false, error: errMsg };
       } finally {
         this.testing = false;
       }
@@ -478,5 +486,26 @@ export default {
   margin-top: 24px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+}
+
+.banner {
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  font-size: 0.9em;
+  word-break: break-word;
+
+  &.banner-success {
+    background: var(--success-banner-bg, #dff6dd);
+    border: 1px solid var(--success, #3d8a3f);
+    color: var(--success, #1e4620);
+  }
+
+  &.banner-error {
+    background: var(--error-banner-bg, #fde8e8);
+    border: 1px solid var(--error, #c9302c);
+    color: var(--error, #7f1d1d);
+  }
 }
 </style>
