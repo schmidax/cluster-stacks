@@ -147,15 +147,14 @@ clusterstacks:
         available: verfügbar
         instances: Instanzen
         cores: vCPUs
-        ram: RAM (MiB)
-        keyPairs: Schlüsselpaare
+        ram: RAM
         networks: Netzwerke
         subnets: Subnetze
         floatingIPs: Floating IPs
         securityGroups: Sicherheitsgruppen
         routers: Router
         volumes: Volumes
-        gigabytes: Festplatte (GiB)
+        gigabytes: Festplatte
         snapshots: Snapshots
 
   credentialCreate:

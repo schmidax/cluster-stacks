@@ -112,9 +112,9 @@
                   />
                 </div>
                 <div class="quota-values">
-                  {{ item.used }} / {{ item.limit === -1 ? '∞' : item.limit }}
-                  <span v-if="item.limit !== -1" class="quota-available">
-                    ({{ item.limit - item.used }} {{ t('clusterstacks.openstack.resources.quotas.available') }})
+                  {{ item.used }} / {{ item.limit }}
+                  <span v-if="item.rawLimit !== -1" class="quota-available">
+                    ({{ item.available }} {{ t('clusterstacks.openstack.resources.quotas.available') }})
                   </span>
                 </div>
               </div>
@@ -230,17 +230,21 @@ export default {
       const sections = [];
       const { computeQuota, networkQuota, volumeQuota } = this.resources;
 
-      const makeItem = (label, q) => {
+      const makeItem = (label, q, formatFn) => {
         if (!q) {
           return null;
         }
-        const used = q.in_use ?? 0;
-        const limit = q.limit ?? -1;
-        const pct = limit === -1 ? 0 : Math.min(100, Math.round((used / limit) * 100));
+        const rawUsed  = q.in_use ?? 0;
+        const rawLimit = q.limit  ?? -1;
+        const pct   = rawLimit === -1 ? 0 : Math.min(100, Math.round((rawUsed / rawLimit) * 100));
         const color = pct >= 90 ? '#c0392b' : pct >= 70 ? '#e67e22' : '#27ae60';
 
+        const used      = formatFn ? formatFn(rawUsed)  : String(rawUsed);
+        const limit     = rawLimit === -1 ? '∞' : (formatFn ? formatFn(rawLimit) : String(rawLimit));
+        const available = rawLimit === -1 ? '' : (formatFn ? formatFn(rawLimit - rawUsed) : String(rawLimit - rawUsed));
+
         return {
-          label, used, limit, pct, color,
+          label, used, limit, available, rawUsed, rawLimit, pct, color,
         };
       };
 
@@ -248,8 +252,7 @@ export default {
         const items = [
           makeItem(this.t('clusterstacks.openstack.resources.quotas.instances'), computeQuota.instances),
           makeItem(this.t('clusterstacks.openstack.resources.quotas.cores'),     computeQuota.cores),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.ram'),       computeQuota.ram),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.keyPairs'),  computeQuota.key_pairs),
+          makeItem(this.t('clusterstacks.openstack.resources.quotas.ram'),       computeQuota.ram, this.formatMiB),
         ].filter(Boolean);
         if (items.length) {
           sections.push({ title: this.t('clusterstacks.openstack.resources.quotas.compute'), items });
@@ -272,7 +275,7 @@ export default {
       if (volumeQuota) {
         const items = [
           makeItem(this.t('clusterstacks.openstack.resources.quotas.volumes'),   volumeQuota.volumes),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.gigabytes'), volumeQuota.gigabytes),
+          makeItem(this.t('clusterstacks.openstack.resources.quotas.gigabytes'), volumeQuota.gigabytes, this.formatGiB),
           makeItem(this.t('clusterstacks.openstack.resources.quotas.snapshots'), volumeQuota.snapshots),
         ].filter(Boolean);
         if (items.length) {
@@ -399,6 +402,31 @@ export default {
 
     t(key) {
       return this.$store.getters['i18n/t'](key);
+    },
+
+    /** Format a MiB integer to the most readable unit (MiB / GiB / TiB). */
+    formatMiB(mib) {
+      if (mib < 0) {
+        return String(mib);
+      }
+      if (mib >= 1024 * 1024) {
+        return `${(mib / (1024 * 1024)).toFixed(2)} TiB`;
+      }
+      if (mib >= 1024) {
+        return `${(mib / 1024).toFixed(2)} GiB`;
+      }
+      return `${mib} MiB`;
+    },
+
+    /** Format a GiB integer to the most readable unit (GiB / TiB). */
+    formatGiB(gib) {
+      if (gib < 0) {
+        return String(gib);
+      }
+      if (gib >= 1024) {
+        return `${(gib / 1024).toFixed(2)} TiB`;
+      }
+      return `${gib} GiB`;
     },
   },
 };
