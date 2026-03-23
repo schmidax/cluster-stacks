@@ -1,8 +1,8 @@
 /**
  * OpenStack API Service for ClusterStacks UI Extension.
  *
- * Extends the patterns from rancher/ui-plugin-examples node-driver/openstack.ts
- * to cover additional OpenStack APIs needed for ClusterStacks:
+ * Accepts a raw clouds.yaml string, parses it internally, and provides
+ * authenticated access to:
  *   - Keystone (identity)
  *   - Nova (compute, quota)
  *   - Neutron (network)
@@ -26,7 +26,6 @@ import {
   SwiftContainer,
   OpenStackProject,
   OpenStackRegion,
-  OpenStackToken,
   OpenStackKeyPair,
   CatalogEntry,
   Endpoint,
@@ -34,28 +33,124 @@ import {
 
 const PROXY_BASE = '/meta/proxy';
 
-export interface OpenStackConfig {
+// ─── Internal parsed representation of a clouds.yaml entry ─────────────────
+
+interface ParsedCloud {
   authUrl: string;
+  regionName: string;
+  // user/password auth
   username?: string;
   password?: string;
   projectName?: string;
   projectId?: string;
   domainName?: string;
-  regionName?: string;
+  // application-credential auth
   applicationCredentialId?: string;
   applicationCredentialSecret?: string;
 }
 
+/**
+ * Minimal clouds.yaml parser.
+ *
+ * Scans every line for `key: value` pairs regardless of indentation level.
+ * This covers all standard clouds.yaml keys without requiring a full YAML parser.
+ * Quoted values and inline comments are handled.
+ *
+ * The following keys are extracted (first occurrence wins):
+ *   auth_url, username, password, project_name, project_id,
+ *   user_domain_name / domain_name, region_name,
+ *   application_credential_id, application_credential_secret
+ */
+function parseCloudsYaml(text: string): ParsedCloud {
+  const seen: Record<string, string> = {};
+
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, colonIdx).trim();
+    let val = line.slice(colonIdx + 1).trim();
+
+    // Skip lines whose value is empty (they are parent / mapping keys)
+    if (!val) {
+      continue;
+    }
+
+    // Remove trailing inline comments
+    val = val.replace(/\s+#.*$/, '');
+
+    // Strip surrounding single or double quotes
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+
+    if (val && !(key in seen)) {
+      seen[key] = val;
+    }
+  }
+
+  const authUrl = (seen['auth_url'] || '').replace(/\/+$/, '');
+  if (!authUrl) {
+    throw new Error('auth_url not found in clouds.yaml');
+  }
+
+  return {
+    authUrl,
+    regionName:                   seen['region_name'] || '',
+    username:                     seen['username'],
+    password:                     seen['password'],
+    projectName:                  seen['project_name'],
+    projectId:                    seen['project_id'],
+    domainName:                   seen['user_domain_name'] || seen['domain_name'] || 'Default',
+    applicationCredentialId:      seen['application_credential_id'],
+    applicationCredentialSecret:  seen['application_credential_secret'],
+  };
+}
+
+/**
+ * Normalise a Keystone auth URL so that it always ends in `/v3`.
+ *
+ * Handles inputs like:
+ *   https://identity.example.com:5000
+ *   https://identity.example.com:5000/
+ *   https://identity.example.com:5000/v3
+ *   https://identity.example.com:5000/v3/
+ */
+function normaliseAuthUrl(raw: string): string {
+  return raw.replace(/\/+$/, '').replace(/\/v\d+$/, '') + '/v3';
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
 export class OpenStackApiService {
-  private config: OpenStackConfig;
+  private cloud: ParsedCloud;
   private store: any;
   private token: string | null = null;
   private catalog: CatalogEntry[] = [];
   private currentProjectId: string | null = null;
 
-  constructor(config: OpenStackConfig, store: any) {
-    this.config = config;
+  /**
+   * @param cloudsYaml  Raw text content of a clouds.yaml file.
+   * @param store       Rancher Vuex store (used for proxied HTTP requests).
+   */
+  constructor(cloudsYaml: string, store: any) {
+    this.cloud = parseCloudsYaml(cloudsYaml);
     this.store = store;
+  }
+
+  /** The project name extracted from clouds.yaml (populated after getToken()). */
+  getProjectName(): string {
+    return this.cloud.projectName || '';
   }
 
   // ─── Authentication ───────────────────────────────────────────────────────
@@ -66,7 +161,8 @@ export class OpenStackApiService {
     }
 
     const authBody = this.buildAuthBody();
-    const url = `${PROXY_BASE}/${this.config.authUrl.replace(/^https?:\/\//, '')}/v3/auth/tokens`;
+    const keystoneBase = normaliseAuthUrl(this.cloud.authUrl);
+    const url = `${PROXY_BASE}/${keystoneBase.replace(/^https?:\/\//, '')}/auth/tokens`;
 
     const response = await this.store.dispatch('management/request', {
       method:               'POST',
@@ -83,24 +179,37 @@ export class OpenStackApiService {
     if (response.token?.project?.id) {
       this.currentProjectId = response.token.project.id;
     }
+    // Prefer the project name returned by Keystone over the parsed one
+    if (response.token?.project?.name) {
+      this.cloud.projectName = response.token.project.name;
+    }
 
-    return this.token!;
+    if (!this.token) {
+      throw new Error('Keystone did not return a token (x-subject-token header missing)');
+    }
+
+    return this.token;
   }
 
-  private buildAuthBody(): any {
-    if (this.config.applicationCredentialId) {
+  private buildAuthBody(): object {
+    const { applicationCredentialId, applicationCredentialSecret } = this.cloud;
+
+    if (applicationCredentialId) {
       return {
         auth: {
           identity: {
             methods:                ['application_credential'],
             application_credential: {
-              id:     this.config.applicationCredentialId,
-              secret: this.config.applicationCredentialSecret,
+              id:     applicationCredentialId,
+              secret: applicationCredentialSecret || '',
             },
           },
         },
       };
     }
+
+    const { username, password, projectName, projectId, domainName } = this.cloud;
+    const domain = { name: domainName || 'Default' };
 
     return {
       auth: {
@@ -108,19 +217,16 @@ export class OpenStackApiService {
           methods:  ['password'],
           password: {
             user: {
-              name:     this.config.username,
-              password: this.config.password,
-              domain:   { name: this.config.domainName || 'Default' },
+              name:     username || '',
+              password: password || '',
+              domain,
             },
           },
         },
         scope: {
-          project: this.config.projectId
-            ? { id: this.config.projectId }
-            : {
-                name:   this.config.projectName,
-                domain: { name: this.config.domainName || 'Default' },
-              },
+          project: projectId
+            ? { id: projectId }
+            : { name: projectName || '', domain },
         },
       },
     };
@@ -134,11 +240,13 @@ export class OpenStackApiService {
       return null;
     }
 
-    const region = this.config.regionName;
+    const region = this.cloud.regionName;
     let endpoint: Endpoint | undefined;
 
     if (region) {
-      endpoint = entry.endpoints.find((e) => e.interface === iface && (e.region === region || e.region_id === region));
+      endpoint = entry.endpoints.find(
+        (e) => e.interface === iface && (e.region === region || e.region_id === region),
+      );
     }
     if (!endpoint) {
       endpoint = entry.endpoints.find((e) => e.interface === iface);
@@ -151,17 +259,17 @@ export class OpenStackApiService {
     await this.getToken();
     const baseUrl = this.getEndpointUrl(endpointType);
     if (!baseUrl) {
-      throw new Error(`No endpoint found for type: ${endpointType}`);
+      throw new Error(`No endpoint found for service type: ${endpointType}`);
     }
 
     const proxyUrl = `${PROXY_BASE}/${baseUrl.replace(/^https?:\/\//, '')}${path}`;
 
     return await this.store.dispatch('management/request', {
-      method:               method,
+      method,
       url:                  proxyUrl,
       headers:              {
-        'X-Auth-Token':  this.token,
-        'Content-Type':  'application/json',
+        'X-Auth-Token': this.token,
+        'Content-Type': 'application/json',
       },
       data:                 data ? JSON.stringify(data) : undefined,
       redirectUnauthorized: false,
@@ -294,11 +402,15 @@ export class OpenStackApiService {
 
   // ─── Keystone (Identity) ──────────────────────────────────────────────────
 
+  private keystoneUrl(path: string): string {
+    const base = normaliseAuthUrl(this.cloud.authUrl);
+    return `${PROXY_BASE}/${base.replace(/^https?:\/\//, '')}${path}`;
+  }
+
   async getProjects(): Promise<OpenStackProject[]> {
-    const url = `${PROXY_BASE}/${this.config.authUrl.replace(/^https?:\/\//, '')}/v3/auth/projects`;
     const response = await this.store.dispatch('management/request', {
       method:               'GET',
-      url,
+      url:                  this.keystoneUrl('/auth/projects'),
       headers:              { 'X-Auth-Token': await this.getToken() },
       redirectUnauthorized: false,
     });
@@ -306,10 +418,9 @@ export class OpenStackApiService {
   }
 
   async getRegions(): Promise<OpenStackRegion[]> {
-    const url = `${PROXY_BASE}/${this.config.authUrl.replace(/^https?:\/\//, '')}/v3/regions`;
     const response = await this.store.dispatch('management/request', {
       method:               'GET',
-      url,
+      url:                  this.keystoneUrl('/regions'),
       headers:              { 'X-Auth-Token': await this.getToken() },
       redirectUnauthorized: false,
     });

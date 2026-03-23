@@ -161,10 +161,10 @@ export default {
         await api.getToken();
         this.testResult       = { success: true };
         this.connectionTested = true;
-        // Extract the project name from the parsed config
-        const config = this.parseCloudYaml();
-        if (config.projectName) {
-          this.form.projectName = config.projectName;
+        // Project name is populated by the service after a successful token request
+        const projectName = api.getProjectName();
+        if (projectName) {
+          this.form.projectName = projectName;
         }
       } catch (e) {
         // Rancher's store throws an HTTP response object, not a plain Error.
@@ -182,8 +182,7 @@ export default {
     },
 
     buildApiService() {
-      const config = this.parseCloudYaml();
-      return new OpenStackApiService(config, this.$store);
+      return new OpenStackApiService(this.yamlContent, this.$store);
     },
 
     onFileUpload(event) {
@@ -196,39 +195,6 @@ export default {
         this.$refs.yamlFileInput.value = '';
       };
       reader.readAsText(file);
-    },
-
-    parseCloudYaml() {
-      // Basic clouds.yaml extraction (first cloud entry)
-      try {
-        // Dynamic import of js-yaml would normally be used here
-        // For a draft we do a minimal extraction
-        const lines = this.yamlContent.split('\n');
-        const cfg = {
-          authUrl:     '',
-          username:    '',
-          password:    '',
-          projectName: '',
-          domainName:  'Default',
-          regionName:  '',
-        };
-
-        for (const line of lines) {
-          const [k, ...rest] = line.trim().split(':');
-          const v = rest.join(':').trim();
-          if (k === 'auth_url')          { cfg.authUrl     = v; }
-          if (k === 'username')          { cfg.username    = v; }
-          if (k === 'password')          { cfg.password    = v; }
-          if (k === 'project_name')      { cfg.projectName = v; }
-          if (k === 'user_domain_name')  { cfg.domainName  = v; }
-          if (k === 'region_name')       { cfg.regionName  = v; }
-        }
-
-        return cfg;
-      } catch {
-        this.yamlError = this.t('clusterstacks.errors.invalidYaml');
-        throw new Error('Invalid YAML');
-      }
     },
 
     async save() {
