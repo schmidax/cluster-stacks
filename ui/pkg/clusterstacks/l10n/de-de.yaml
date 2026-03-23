@@ -1,0 +1,210 @@
+clusterstacks:
+  nav:
+    dashboard: Dashboard
+    clusters: Cluster
+    stacks: ClusterStacks
+    openstack: OpenStack-Projekte
+
+  dashboard:
+    title: ClusterStacks Dashboard
+    description: Kubernetes-Cluster verwalten, die mit ClusterStacks und OpenStack erstellt wurden.
+    cards:
+      clusters:
+        title: Cluster
+        description: CAPI-verwaltete Kubernetes-Cluster anzeigen und verwalten.
+      stacks:
+        title: ClusterStacks
+        description: Verfügbare ClusterStack-Releases und Kubernetes-Versionen durchsuchen.
+      openstack:
+        title: OpenStack-Projekte
+        description: OpenStack-Anmeldedaten verwalten und Ressourcen anzeigen.
+
+  clusters:
+    title: Cluster
+    createBtn: Cluster erstellen
+    noData: Keine Cluster gefunden.
+    table:
+      name: Name
+      namespace: Namespace
+      version: K8s-Version
+      phase: Phase
+      age: Alter
+      ready: Bereit
+
+  clusterCreate:
+    title: Cluster erstellen
+    editTitle: Cluster bearbeiten
+    tabs:
+      general: Allgemein
+      openstack: OpenStack
+      etcd: ETCD-Backup
+    name: Clustername
+    namespace: Namespace
+    clusterClass: ClusterClass
+    k8sVersion: Kubernetes-Version
+    k8sVersionPlaceholder: Kubernetes-Version auswählen...
+    controlPlane:
+      title: Control Plane
+      replicas: Replikate
+      flavor: VM-Flavor
+      flavorPlaceholder: Flavor auswählen...
+    worker:
+      title: Worker
+      replicas: Replikate
+      flavor: VM-Flavor
+      flavorPlaceholder: Flavor auswählen...
+    bastion:
+      title: Bastion-Host
+      enabled: Bastion aktivieren
+      flavor: VM-Flavor
+      flavorPlaceholder: Flavor auswählen...
+    network:
+      title: Netzwerk
+      externalNetwork: Externes Netzwerk
+      externalNetworkPlaceholder: Externes Netzwerk auswählen...
+      imageName: VM-Image
+      imageNamePlaceholder: VM-Image auswählen...
+    etcdBackup:
+      title: ETCD-Backup (S3)
+      enabled: ETCD-Backup auf S3 aktivieren
+      description: Erstellt automatisch einen Swift-Container und hinterlegt die Credentials für das etcd-Backup.
+      containerName: Swift-Container-Name
+      endpoint: S3-Endpunkt
+    save: Cluster speichern
+    cancel: Abbrechen
+    validating: Quota wird geprüft...
+
+  stacks:
+    title: ClusterStacks
+    noData: Keine ClusterStacks im Namespace 'clusterstacks' gefunden.
+    card:
+      name: Name
+      provider: Provider
+      k8sVersion: Kubernetes-Version
+      versions: Versionen
+      channel: Kanal
+      noReleases: Keine Releases verfügbar.
+      status: Status
+      clusterClass: ClusterClass
+
+  openstack:
+    title: OpenStack-Projekte
+    createBtn: Anmeldedaten hinzufügen
+    noData: Keine OpenStack-Anmeldedaten konfiguriert.
+    credential:
+      name: Name
+      authUrl: Auth-URL
+      project: Projekt
+      region: Region
+    resources:
+      title: Ressourcen
+      tabs:
+        instances: Instanzen
+        networks: Netzwerke
+        securityGroups: Sicherheitsgruppen
+        floatingIPs: Floating IPs
+        volumes: Volumes
+        flavors: Flavors
+        images: Images
+      instances:
+        noData: Keine Instanzen gefunden.
+        name: Name
+        status: Status
+        flavor: Flavor
+        image: Image
+        created: Erstellt
+      networks:
+        noData: Keine Netzwerke gefunden.
+        name: Name
+        status: Status
+        external: Extern
+        subnets: Subnetze
+        shared: Geteilt
+      securityGroups:
+        noData: Keine Sicherheitsgruppen gefunden.
+        name: Name
+        description: Beschreibung
+        rules: Regeln
+      floatingIPs:
+        noData: Keine Floating IPs gefunden.
+        address: Floating IP
+        fixed: Feste IP
+        status: Status
+      volumes:
+        noData: Keine Volumes gefunden.
+        name: Name
+        status: Status
+        size: Größe (GiB)
+        type: Typ
+      flavors:
+        noData: Keine Flavors gefunden.
+        name: Name
+        vcpus: vCPUs
+        ram: RAM (MiB)
+        disk: Disk (GiB)
+      images:
+        noData: Keine Images gefunden.
+        name: Name
+        status: Status
+        visibility: Sichtbarkeit
+        diskFormat: Format
+        size: Größe
+
+  credentialCreate:
+    title: OpenStack-Anmeldedaten hinzufügen
+    editTitle: OpenStack-Anmeldedaten bearbeiten
+    name: Name der Anmeldedaten
+    namePlaceholder: z.B. mein-openstack-prod
+    authUrl: Auth-URL (Keystone-Endpunkt)
+    authUrlPlaceholder: https://keystone.example.com:5000
+    domainName: Benutzerdomäne
+    domainNamePlaceholder: Default
+    username: Benutzername
+    usernamePlaceholder: Ihr OpenStack-Benutzername
+    password: Passwort
+    passwordPlaceholder: Ihr OpenStack-Passwort
+    projectName: Projektname
+    projectNamePlaceholder: mein-projekt
+    region: Region
+    regionPlaceholder: RegionOne
+    cloudYaml: Oder clouds.yaml-Inhalt einfügen
+    cloudYamlPlaceholder: "clouds:\n  openstack:\n    auth:\n      ..."
+    save: Anmeldedaten speichern
+    cancel: Abbrechen
+    testConnection: Verbindung testen
+    testSuccess: Verbindung erfolgreich
+    testError: Verbindung fehlgeschlagen
+
+  quota:
+    title: Quota-Validierung
+    checking: OpenStack-Quota wird geprüft...
+    valid: Quota reicht für diese Cluster-Konfiguration aus.
+    error: "Cluster kann nicht erstellt werden: Quota überschritten."
+    warning: "Warnung: Quota ist knapp."
+
+  errors:
+    loadFlavors: Fehler beim Laden der Flavors
+    loadImages: Fehler beim Laden der Images
+    loadNetworks: Fehler beim Laden der Netzwerke
+    loadQuota: Fehler beim Laden der Quota-Informationen
+    loadClusters: Fehler beim Laden der Cluster
+    loadStacks: Fehler beim Laden der ClusterStacks
+    saveCluster: Fehler beim Speichern des Clusters
+    saveCredentials: Fehler beim Speichern der Anmeldedaten
+    invalidYaml: Ungültiges YAML-Format
+    missingFields: Bitte alle Pflichtfelder ausfüllen
+
+  common:
+    loading: Laden...
+    retry: Wiederholen
+    delete: Löschen
+    edit: Bearbeiten
+    create: Erstellen
+    save: Speichern
+    cancel: Abbrechen
+    refresh: Aktualisieren
+    na: N/A
+    yes: "Ja"
+    no: "Nein"
+    enabled: Aktiviert
+    disabled: Deaktiviert

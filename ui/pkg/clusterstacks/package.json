@@ -1,0 +1,26 @@
+{
+  "name": "clusterstacks",
+  "description": "Rancher Dashboard UI Extension for ClusterStacks with OpenStack integration",
+  "version": "0.1.0",
+  "rancher": {
+    "type": "ui-plugin",
+    "id": "clusterstacks",
+    "annotations": {
+      "catalog.cattle.io/display-name": "ClusterStacks",
+      "catalog.cattle.io/kube-version": ">= 1.24.0-0",
+      "catalog.cattle.io/rancher-version": ">= 2.7.0-0",
+      "catalog.cattle.io/type": "ui-plugin",
+      "catalog.cattle.io/ui-component": "clusterstacks"
+    }
+  },
+  "scripts": {
+    "build": "rancher-build",
+    "dev": "rancher-dev",
+    "lint": "eslint --ext .js,.vue,.ts src",
+    "publish-pkg": "rancher-publish"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@rancher/shell": "0.6.2"
+  }
+}

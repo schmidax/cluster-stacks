@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "strict": false,
+    "noImplicitAny": false,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "types": ["node", "webpack-env"],
+    "allowJs": true,
+    "jsx": "preserve"
+  },
+  "include": ["./**/*.ts", "./**/*.tsx", "./**/*.vue"],
+  "exclude": ["node_modules"]
+}

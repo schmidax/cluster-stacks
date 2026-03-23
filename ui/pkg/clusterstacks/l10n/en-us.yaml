@@ -1,0 +1,210 @@
+clusterstacks:
+  nav:
+    dashboard: Dashboard
+    clusters: Clusters
+    stacks: ClusterStacks
+    openstack: OpenStack Projects
+
+  dashboard:
+    title: ClusterStacks Dashboard
+    description: Manage Kubernetes clusters created with ClusterStacks and OpenStack.
+    cards:
+      clusters:
+        title: Clusters
+        description: View and manage CAPI-managed Kubernetes clusters.
+      stacks:
+        title: ClusterStacks
+        description: Browse available ClusterStack releases and Kubernetes versions.
+      openstack:
+        title: OpenStack Projects
+        description: Manage OpenStack credentials and view resources.
+
+  clusters:
+    title: Clusters
+    createBtn: Create Cluster
+    noData: No clusters found.
+    table:
+      name: Name
+      namespace: Namespace
+      version: K8s Version
+      phase: Phase
+      age: Age
+      ready: Ready
+
+  clusterCreate:
+    title: Create Cluster
+    editTitle: Edit Cluster
+    tabs:
+      general: General
+      openstack: OpenStack
+      etcd: ETCD Backup
+    name: Cluster Name
+    namespace: Namespace
+    clusterClass: ClusterClass
+    k8sVersion: Kubernetes Version
+    k8sVersionPlaceholder: Select a Kubernetes version...
+    controlPlane:
+      title: Control Plane
+      replicas: Replicas
+      flavor: VM Flavor
+      flavorPlaceholder: Select a flavor...
+    worker:
+      title: Workers
+      replicas: Replicas
+      flavor: VM Flavor
+      flavorPlaceholder: Select a flavor...
+    bastion:
+      title: Bastion Host
+      enabled: Enable Bastion
+      flavor: VM Flavor
+      flavorPlaceholder: Select a flavor...
+    network:
+      title: Network
+      externalNetwork: External Network
+      externalNetworkPlaceholder: Select external network...
+      imageName: VM Image
+      imageNamePlaceholder: Select VM image...
+    etcdBackup:
+      title: ETCD Backup (S3)
+      enabled: Enable ETCD Backup to S3
+      description: Automatically creates a Swift container and stores credentials for etcd backup.
+      containerName: Swift Container Name
+      endpoint: S3 Endpoint
+    save: Save Cluster
+    cancel: Cancel
+    validating: Validating quota...
+
+  stacks:
+    title: ClusterStacks
+    noData: No ClusterStacks found in namespace 'clusterstacks'.
+    card:
+      name: Name
+      provider: Provider
+      k8sVersion: Kubernetes Version
+      versions: Versions
+      channel: Channel
+      noReleases: No releases available.
+      status: Status
+      clusterClass: ClusterClass
+
+  openstack:
+    title: OpenStack Projects
+    createBtn: Add Credentials
+    noData: No OpenStack credentials configured.
+    credential:
+      name: Name
+      authUrl: Auth URL
+      project: Project
+      region: Region
+    resources:
+      title: Resources
+      tabs:
+        instances: Instances
+        networks: Networks
+        securityGroups: Security Groups
+        floatingIPs: Floating IPs
+        volumes: Volumes
+        flavors: Flavors
+        images: Images
+      instances:
+        noData: No instances found.
+        name: Name
+        status: Status
+        flavor: Flavor
+        image: Image
+        created: Created
+      networks:
+        noData: No networks found.
+        name: Name
+        status: Status
+        external: External
+        subnets: Subnets
+        shared: Shared
+      securityGroups:
+        noData: No security groups found.
+        name: Name
+        description: Description
+        rules: Rules
+      floatingIPs:
+        noData: No floating IPs found.
+        address: Floating IP
+        fixed: Fixed IP
+        status: Status
+      volumes:
+        noData: No volumes found.
+        name: Name
+        status: Status
+        size: Size (GiB)
+        type: Type
+      flavors:
+        noData: No flavors found.
+        name: Name
+        vcpus: vCPUs
+        ram: RAM (MiB)
+        disk: Disk (GiB)
+      images:
+        noData: No images found.
+        name: Name
+        status: Status
+        visibility: Visibility
+        diskFormat: Format
+        size: Size
+
+  credentialCreate:
+    title: Add OpenStack Credentials
+    editTitle: Edit OpenStack Credentials
+    name: Credential Name
+    namePlaceholder: e.g. my-openstack-prod
+    authUrl: Auth URL (Keystone Endpoint)
+    authUrlPlaceholder: https://keystone.example.com:5000
+    domainName: User Domain
+    domainNamePlaceholder: Default
+    username: Username
+    usernamePlaceholder: your-openstack-username
+    password: Password
+    passwordPlaceholder: your-openstack-password
+    projectName: Project Name
+    projectNamePlaceholder: my-project
+    region: Region
+    regionPlaceholder: RegionOne
+    cloudYaml: Or paste clouds.yaml content
+    cloudYamlPlaceholder: "clouds:\n  openstack:\n    auth:\n      ..."
+    save: Save Credentials
+    cancel: Cancel
+    testConnection: Test Connection
+    testSuccess: Connection successful
+    testError: Connection failed
+
+  quota:
+    title: Quota Validation
+    checking: Checking OpenStack quota...
+    valid: Quota is sufficient for this cluster configuration.
+    error: "Cluster cannot be created: quota exceeded."
+    warning: "Warning: quota is running low."
+
+  errors:
+    loadFlavors: Failed to load flavors
+    loadImages: Failed to load images
+    loadNetworks: Failed to load networks
+    loadQuota: Failed to load quota information
+    loadClusters: Failed to load clusters
+    loadStacks: Failed to load ClusterStacks
+    saveCluster: Failed to save cluster
+    saveCredentials: Failed to save credentials
+    invalidYaml: Invalid YAML format
+    missingFields: Please fill in all required fields
+
+  common:
+    loading: Loading...
+    retry: Retry
+    delete: Delete
+    edit: Edit
+    create: Create
+    save: Save
+    cancel: Cancel
+    refresh: Refresh
+    na: N/A
+    yes: "Yes"
+    no: "No"
+    enabled: Enabled
+    disabled: Disabled
