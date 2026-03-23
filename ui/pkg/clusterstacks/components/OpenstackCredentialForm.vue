@@ -289,7 +289,8 @@ export default {
       this.uploadedFileName = file.name;
       const reader = new FileReader();
       reader.onload = (e) => {
-        this.yamlContent = e.target?.result || '';
+        const result = e.target?.result;
+        this.yamlContent = typeof result === 'string' ? result : '';
       };
       reader.onerror = () => {
         this.yamlError = this.t('clusterstacks.errors.invalidYaml');
