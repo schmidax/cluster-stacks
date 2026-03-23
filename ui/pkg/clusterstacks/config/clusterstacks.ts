@@ -5,20 +5,22 @@ export const BLANK_CLUSTER = '_';
 
 // Route name constants
 export const ROUTES = {
-  DASHBOARD:         'clusterstacks-dashboard',
-  CLUSTERS:          'clusterstacks-clusters',
-  CLUSTERS_CREATE:   'clusterstacks-clusters-create',
-  STACKS:            'clusterstacks-stacks',
-  OPENSTACK:         'clusterstacks-openstack',
-  OPENSTACK_CREATE:  'clusterstacks-openstack-create',
+  DASHBOARD:            'clusterstacks-dashboard',
+  CLUSTERS:             'clusterstacks-clusters',
+  CLUSTERS_CREATE:      'clusterstacks-clusters-create',
+  STACKS:               'clusterstacks-stacks',
+  OPENSTACK:            'clusterstacks-openstack',
+  OPENSTACK_CREATE:     'clusterstacks-openstack-create',
+  OPENSTACK_RESOURCES:  'clusterstacks-openstack-resources',
 };
 
 // Navigation type IDs
 export const NAV = {
-  DASHBOARD:  'clusterstacks-dashboard',
-  CLUSTERS:   'clusterstacks-clusters',
-  STACKS:     'clusterstacks-stacks',
-  OPENSTACK:  'clusterstacks-openstack',
+  DASHBOARD:            'clusterstacks-dashboard',
+  CLUSTERS:             'clusterstacks-clusters',
+  STACKS:               'clusterstacks-stacks',
+  OPENSTACK:            'clusterstacks-openstack',
+  OPENSTACK_RESOURCES:  'clusterstacks-openstack-resources',
 };
 
 export function init($plugin: IPlugin, store: any) {
@@ -76,13 +78,13 @@ export function init($plugin: IPlugin, store: any) {
     weight:     80,
   });
 
-  // OpenStack Projects menu item
+  // OpenStack Projects menu item (credentials list)
   virtualType({
     name:       NAV.OPENSTACK,
-    labelKey:   'clusterstacks.nav.openstack',
+    labelKey:   'clusterstacks.nav.openstackCredentials',
     route:      { name: ROUTES.OPENSTACK },
-    icon:       'globe',
-    weight:     70,
+    icon:       'key',
+    weight:     71,
   });
 
   configureType(NAV.OPENSTACK, {
@@ -91,17 +93,30 @@ export function init($plugin: IPlugin, store: any) {
     isRemovable: true,
   });
 
-  // Add all nav items to the sidebar
+  // OpenStack Resources menu item
+  virtualType({
+    name:       NAV.OPENSTACK_RESOURCES,
+    labelKey:   'clusterstacks.nav.openstackResources',
+    route:      { name: ROUTES.OPENSTACK_RESOURCES },
+    icon:       'globe',
+    weight:     70,
+  });
+
+  // Add all nav items to the sidebar, OpenStack items in their own group
   basicType([
     NAV.DASHBOARD,
     NAV.CLUSTERS,
     NAV.STACKS,
-    NAV.OPENSTACK,
   ]);
+  basicType([
+    NAV.OPENSTACK,
+    NAV.OPENSTACK_RESOURCES,
+  ], 'clusterstacks.nav.openstackGroup');
 
   // Weight the nav types so they appear in the right order
-  weightType(NAV.DASHBOARD, 100, true);
-  weightType(NAV.CLUSTERS,  90, true);
-  weightType(NAV.STACKS,    80, true);
-  weightType(NAV.OPENSTACK, 70, true);
+  weightType(NAV.DASHBOARD,           100, true);
+  weightType(NAV.CLUSTERS,             90, true);
+  weightType(NAV.STACKS,               80, true);
+  weightType(NAV.OPENSTACK,            71, true);
+  weightType(NAV.OPENSTACK_RESOURCES,  70, true);
 }

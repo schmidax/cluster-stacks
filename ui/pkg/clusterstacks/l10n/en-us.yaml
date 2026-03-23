@@ -4,6 +4,9 @@ clusterstacks:
     clusters: Clusters
     stacks: ClusterStacks
     openstack: OpenStack Projects
+    openstackGroup: OpenStack
+    openstackCredentials: Credentials
+    openstackResources: Resources
 
   dashboard:
     title: ClusterStacks Dashboard
@@ -96,8 +99,14 @@ clusterstacks:
       authUrl: Auth URL
       project: Project
       region: Region
+    credentials:
+      title: OpenStack Credentials
+      filterByProject: Filter by Project
+      allProjects: All Projects
     resources:
       title: Resources
+      credential: Credential
+      selectCredential: Select credentials...
       tabs:
         instances: Instances
         networks: Networks
@@ -141,6 +150,7 @@ clusterstacks:
         az: Availability Zone
         attachedTo: Attached To
       quotas:
+        title: Quota Overview
         compute: Compute
         network: Network
         storage: Block Storage

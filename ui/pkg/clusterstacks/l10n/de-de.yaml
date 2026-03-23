@@ -4,6 +4,9 @@ clusterstacks:
     clusters: Cluster
     stacks: ClusterStacks
     openstack: OpenStack-Projekte
+    openstackGroup: OpenStack
+    openstackCredentials: Anmeldedaten
+    openstackResources: Ressourcen
 
   dashboard:
     title: ClusterStacks Dashboard
@@ -96,8 +99,14 @@ clusterstacks:
       authUrl: Auth-URL
       project: Projekt
       region: Region
+    credentials:
+      title: OpenStack-Anmeldedaten
+      filterByProject: Nach Projekt filtern
+      allProjects: Alle Projekte
     resources:
       title: Ressourcen
+      credential: Anmeldedaten
+      selectCredential: Anmeldedaten auswählen...
       tabs:
         instances: Instanzen
         networks: Netzwerke
@@ -141,6 +150,7 @@ clusterstacks:
         az: Verfügbarkeitszone
         attachedTo: Angehängt an
       quotas:
+        title: Kontingentübersicht
         compute: Compute
         network: Netzwerk
         storage: Block Storage

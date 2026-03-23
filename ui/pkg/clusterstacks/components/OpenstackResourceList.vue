@@ -91,37 +91,6 @@
         />
       </div>
 
-      <!-- Quotas -->
-      <div v-show="activeTab === 'quotas'">
-        <div v-if="loadingQuotas" class="loading">
-          <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
-        </div>
-        <div v-else-if="quotaError" class="banner banner-error">
-          {{ quotaError }}
-        </div>
-        <div v-else class="quota-sections">
-          <div v-for="section in quotaSections" :key="section.title" class="quota-section">
-            <h3 class="quota-section-title">{{ section.title }}</h3>
-            <div class="quota-grid">
-              <div v-for="item in section.items" :key="item.label" class="quota-card">
-                <div class="quota-label">{{ item.label }}</div>
-                <div class="quota-bar-wrap">
-                  <div
-                    class="quota-bar-fill"
-                    :style="{ width: item.pct + '%', background: item.color }"
-                  />
-                </div>
-                <div class="quota-values">
-                  {{ item.used }} / {{ item.limit }}
-                  <span v-if="item.rawLimit !== -1" class="quota-available">
-                    ({{ item.available }} {{ t('clusterstacks.openstack.resources.quotas.available') }})
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -144,12 +113,10 @@ export default {
 
   data() {
     return {
-      activeTab:     'instances',
-      loading:       false,
-      loadingQuotas: false,
-      error:         null,
-      quotaError:    null,
-      api:           null,
+      activeTab: 'instances',
+      loading:   false,
+      error:     null,
+      api:       null,
 
       resources: {
         servers:        [],
@@ -157,9 +124,6 @@ export default {
         securityGroups: [],
         floatingIPs:    [],
         volumes:        [],
-        computeQuota:   null,
-        networkQuota:   null,
-        volumeQuota:    null,
       },
     };
   },
@@ -172,7 +136,6 @@ export default {
         { id: 'securityGroups', labelKey: 'clusterstacks.openstack.resources.tabs.securityGroups' },
         { id: 'floatingIPs',    labelKey: 'clusterstacks.openstack.resources.tabs.floatingIPs' },
         { id: 'volumes',        labelKey: 'clusterstacks.openstack.resources.tabs.volumes' },
-        { id: 'quotas',         labelKey: 'clusterstacks.openstack.resources.tabs.quotas' },
       ];
     },
 
@@ -224,66 +187,6 @@ export default {
         { name: 'az',         labelKey: 'clusterstacks.openstack.resources.volumes.az',         value: 'availability_zone' },
         { name: 'attachedTo', labelKey: 'clusterstacks.openstack.resources.volumes.attachedTo', value: '_attachedTo' },
       ];
-    },
-
-    quotaSections() {
-      const sections = [];
-      const { computeQuota, networkQuota, volumeQuota } = this.resources;
-
-      const makeItem = (label, q, formatFn) => {
-        if (!q) {
-          return null;
-        }
-        const rawUsed  = q.in_use ?? 0;
-        const rawLimit = q.limit  ?? -1;
-        const pct   = rawLimit === -1 ? 0 : Math.min(100, Math.round((rawUsed / rawLimit) * 100));
-        const color = pct >= 90 ? '#c0392b' : pct >= 70 ? '#e67e22' : '#27ae60';
-
-        const used      = formatFn ? formatFn(rawUsed)  : String(rawUsed);
-        const limit     = rawLimit === -1 ? '∞' : (formatFn ? formatFn(rawLimit) : String(rawLimit));
-        const available = rawLimit === -1 ? '' : (formatFn ? formatFn(rawLimit - rawUsed) : String(rawLimit - rawUsed));
-
-        return {
-          label, used, limit, available, rawUsed, rawLimit, pct, color,
-        };
-      };
-
-      if (computeQuota) {
-        const items = [
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.instances'), computeQuota.instances),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.cores'),     computeQuota.cores),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.ram'),       computeQuota.ram, this.formatMiB),
-        ].filter(Boolean);
-        if (items.length) {
-          sections.push({ title: this.t('clusterstacks.openstack.resources.quotas.compute'), items });
-        }
-      }
-
-      if (networkQuota) {
-        const items = [
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.networks'),       networkQuota.network),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.subnets'),        networkQuota.subnet),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.floatingIPs'),    networkQuota.floatingip),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.securityGroups'), networkQuota.security_group),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.routers'),        networkQuota.router),
-        ].filter(Boolean);
-        if (items.length) {
-          sections.push({ title: this.t('clusterstacks.openstack.resources.quotas.network'), items });
-        }
-      }
-
-      if (volumeQuota) {
-        const items = [
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.volumes'),   volumeQuota.volumes),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.gigabytes'), volumeQuota.gigabytes, this.formatGiB),
-          makeItem(this.t('clusterstacks.openstack.resources.quotas.snapshots'), volumeQuota.snapshots),
-        ].filter(Boolean);
-        if (items.length) {
-          sections.push({ title: this.t('clusterstacks.openstack.resources.quotas.storage'), items });
-        }
-      }
-
-      return sections;
     },
   },
 
@@ -359,33 +262,6 @@ export default {
       } finally {
         this.loading = false;
       }
-
-      this.loadQuotas();
-    },
-
-    async loadQuotas() {
-      this.loadingQuotas = true;
-      this.quotaError    = null;
-
-      try {
-        const [compute, network, volume] = await Promise.allSettled([
-          this.api.getComputeQuota(),
-          this.api.getNetworkQuota(),
-          this.api.getVolumeQuota(),
-        ]);
-
-        this.resources.computeQuota = compute.status === 'fulfilled' ? compute.value : null;
-        this.resources.networkQuota = network.status === 'fulfilled' ? network.value : null;
-        this.resources.volumeQuota  = volume.status  === 'fulfilled' ? volume.value  : null;
-
-        if (compute.status === 'rejected' && network.status === 'rejected') {
-          this.quotaError = this.t('clusterstacks.errors.loadQuota');
-        }
-      } catch (e) {
-        this.quotaError = e?.message || String(e);
-      } finally {
-        this.loadingQuotas = false;
-      }
     },
 
     getCount(tabId) {
@@ -402,31 +278,6 @@ export default {
 
     t(key) {
       return this.$store.getters['i18n/t'](key);
-    },
-
-    /** Format a MiB integer to the most readable unit (MiB / GiB / TiB). */
-    formatMiB(mib) {
-      if (mib < 0) {
-        return String(mib);
-      }
-      if (mib >= 1024 * 1024) {
-        return `${(mib / (1024 * 1024)).toFixed(2)} TiB`;
-      }
-      if (mib >= 1024) {
-        return `${(mib / 1024).toFixed(2)} GiB`;
-      }
-      return `${mib} MiB`;
-    },
-
-    /** Format a GiB integer to the most readable unit (GiB / TiB). */
-    formatGiB(gib) {
-      if (gib < 0) {
-        return String(gib);
-      }
-      if (gib >= 1024) {
-        return `${(gib / 1024).toFixed(2)} TiB`;
-      }
-      return `${gib} GiB`;
     },
   },
 };

@@ -51,6 +51,14 @@ const routes: RouteConfig[] = [
     component: () => import(/* webpackChunkName: "clusterstacks-openstack-create" */ '../pages/openstack-projects/create.vue'),
     meta:      { product: PRODUCT_NAME },
   },
+
+  // OpenStack resources overview
+  {
+    name:      ROUTES.OPENSTACK_RESOURCES,
+    path:      `${CLUSTER_PREFIX}/openstack/resources`,
+    component: () => import(/* webpackChunkName: "clusterstacks-openstack-resources" */ '../pages/openstack-projects/resources.vue'),
+    meta:      { product: PRODUCT_NAME },
+  },
 ];
 
 export default routes;

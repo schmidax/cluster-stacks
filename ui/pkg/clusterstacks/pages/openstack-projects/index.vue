@@ -1,105 +1,117 @@
 <template>
   <div class="openstack-page">
     <div class="page-header">
-      <h1>{{ t('clusterstacks.openstack.title') }}</h1>
+      <h1>{{ t('clusterstacks.openstack.credentials.title') }}</h1>
       <button class="btn role-primary" @click="createCredential">
         {{ t('clusterstacks.openstack.createBtn') }}
       </button>
     </div>
 
-    <div v-if="!credentials.length" class="no-data">
+    <!-- Rancher project filter -->
+    <div v-if="projects.length" class="project-filter">
+      <label class="project-filter-label">{{ t('clusterstacks.openstack.credentials.filterByProject') }}</label>
+      <select v-model="selectedProject" class="project-select">
+        <option value="">{{ t('clusterstacks.openstack.credentials.allProjects') }}</option>
+        <option v-for="p in projects" :key="p.id" :value="p.id">
+          {{ p.spec && p.spec.displayName ? p.spec.displayName : p.id }}
+        </option>
+      </select>
+    </div>
+
+    <div v-if="!filteredCredentials.length" class="no-data">
       {{ t('clusterstacks.openstack.noData') }}
     </div>
 
-    <div v-else>
-      <!-- Credential selector -->
-      <div class="credential-list">
-        <div
-          v-for="cred in credentials"
-          :key="cred.name"
-          class="credential-item"
-          :class="{ active: selectedCredential === cred.name }"
-          @click="selectCredential(cred)"
-        >
-          <div class="cred-name">{{ cred.name }}</div>
-          <div class="cred-detail">{{ cred.authUrl }}</div>
-          <div class="cred-actions">
-            <button class="btn btn-sm role-secondary" @click.stop="editCredential(cred)">
-              {{ t('clusterstacks.common.edit') }}
-            </button>
-            <button class="btn btn-sm role-danger" @click.stop="deleteCredential(cred)">
-              {{ t('clusterstacks.common.delete') }}
-            </button>
-          </div>
+    <div v-else class="credential-list">
+      <div
+        v-for="cred in filteredCredentials"
+        :key="cred.name"
+        class="credential-item"
+      >
+        <div class="cred-name">{{ cred.name }}</div>
+        <div class="cred-detail">{{ cred.authUrl }}</div>
+        <div class="cred-actions">
+          <button class="btn btn-sm role-secondary" @click="editCredential(cred)">
+            {{ t('clusterstacks.common.edit') }}
+          </button>
+          <button class="btn btn-sm role-danger" @click="deleteCredential(cred)">
+            {{ t('clusterstacks.common.delete') }}
+          </button>
         </div>
-      </div>
-
-      <!-- Resources panel -->
-      <div v-if="activeCredential" class="resources-panel">
-        <h2>{{ t('clusterstacks.openstack.resources.title') }}</h2>
-        <OpenstackResourceList :credential="activeCredential" />
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import OpenstackResourceList from '../../components/OpenstackResourceList.vue';
 import { ROUTES } from '../../config/clusterstacks';
 import { parseCloudsYaml } from '../../services/openstack-api';
 
 export default {
-  name: 'OpenstackProjectsIndex',
-
-  components: { OpenstackResourceList },
+  name: 'OpenstackCredentialsList',
 
   data() {
     return {
-      credentials:        [],
-      selectedCredential: null,
-      activeCredential:   null,
+      credentials:     [],
+      projects:        [],
+      selectedProject: '',
     };
   },
 
+  computed: {
+    filteredCredentials() {
+      if (!this.selectedProject) {
+        return this.credentials;
+      }
+
+      return this.credentials.filter(
+        (cred) => cred.projectId === this.selectedProject,
+      );
+    },
+  },
+
   async mounted() {
-    await this.loadCredentials();
+    await Promise.all([this.loadCredentials(), this.loadProjects()]);
   },
 
   methods: {
     async loadCredentials() {
       try {
-        // List all namespaces that start with "cso-"
         const nsResponse = await this.$store.dispatch('management/request', {
           method: 'GET',
           url:    '/api/v1/namespaces',
         });
-        const csoNamespaces = (nsResponse?.items || [])
-          .map((ns) => ns.metadata.name)
-          .filter((name) => name.startsWith('cso-') && name !== 'cso-system');
+        const csoNamespaces = (nsResponse?.items || []).filter(
+          (ns) => ns.metadata.name.startsWith('cso-') && ns.metadata.name !== 'cso-system',
+        );
 
-        // For each cso-* namespace, try to fetch the secret named "openstack"
         const results = await Promise.allSettled(
           csoNamespaces.map((ns) => this.$store.dispatch('management/request', {
             method: 'GET',
-            url:    `/api/v1/namespaces/${ns}/secrets/openstack`,
+            url:    `/api/v1/namespaces/${ns.metadata.name}/secrets/openstack`,
           })),
         );
 
         this.credentials = results
           .filter((r) => r.status === 'fulfilled')
-          .map((r) => {
+          .map((r, i) => {
             const s = r.value;
             const ns = s.metadata.namespace;
+            const nsObj = csoNamespaces.find((n) => n.metadata.name === ns);
+            const projectId = nsObj?.metadata?.annotations?.['field.cattle.io/projectId'] || '';
             const cloudsYaml = atob(s.data?.['clouds.yaml'] || '');
             let authUrl = '';
+
             try {
               authUrl = parseCloudsYaml(cloudsYaml).authUrl;
             } catch {}
+
             return {
               name:      ns.startsWith('cso-') ? ns.slice(4) : ns,
               namespace: ns,
               authUrl,
               cloudsYaml,
+              projectId,
               raw:       s,
             };
           });
@@ -108,9 +120,18 @@ export default {
       }
     },
 
-    selectCredential(cred) {
-      this.selectedCredential = cred.name;
-      this.activeCredential = cred;
+    async loadProjects() {
+      try {
+        const clusterId = this.$route.params.cluster;
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/v3/projects?clusterId=${clusterId}`,
+        });
+
+        this.projects = resp?.data || [];
+      } catch {
+        this.projects = [];
+      }
     },
 
     createCredential() {
@@ -134,10 +155,6 @@ export default {
           url:    `/api/v1/namespaces/${cred.namespace}/secrets/openstack`,
         });
         await this.loadCredentials();
-        if (this.selectedCredential === cred.name) {
-          this.selectedCredential = null;
-          this.activeCredential = null;
-        }
       } catch (e) {
         console.error(e); // eslint-disable-line no-console
       }
@@ -162,6 +179,22 @@ export default {
   margin-bottom: 20px;
 }
 
+.project-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+
+  .project-filter-label {
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .project-select {
+    min-width: 200px;
+  }
+}
+
 .no-data {
   padding: 40px;
   text-align: center;
@@ -172,7 +205,6 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 24px;
 }
 
 .credential-item {
@@ -181,14 +213,7 @@ export default {
   padding: 12px 16px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  cursor: pointer;
   background: var(--box-bg);
-  transition: border-color 0.2s;
-
-  &:hover,
-  &.active {
-    border-color: var(--primary);
-  }
 
   .cred-name {
     font-weight: 600;
@@ -208,3 +233,4 @@ export default {
   }
 }
 </style>
+
