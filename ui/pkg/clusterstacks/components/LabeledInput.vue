@@ -71,6 +71,7 @@ export default {
       this.$emit('update:modelValue', value);
     },
   },
+};
 </script>
 
 <style lang="scss" scoped>
