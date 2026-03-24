@@ -180,12 +180,10 @@ export default {
     async loadProjects() {
       try {
         const clusterId = this.$route.params.cluster;
-        const resp = await this.$store.dispatch('management/request', {
-          method: 'GET',
-          url:    `/v3/projects?clusterId=${clusterId}`,
-        });
+        const all = await this.$store.dispatch('management/findAll', { type: 'management.cattle.io.project' });
 
-        this.projects = resp?.data || [];
+        // Projects are namespaced to their cluster in the Steve API (metadata.namespace = clusterId)
+        this.projects = (all || []).filter((p) => (p.metadata?.namespace || p.spec?.clusterName) === clusterId);
       } catch {
         this.projects = [];
       }
