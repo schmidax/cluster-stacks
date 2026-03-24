@@ -213,6 +213,12 @@ clusterstacks:
     invalidYaml: Ungültiges YAML-Format
     missingFields: Bitte alle Pflichtfelder ausfüllen
 
+  dialog:
+    delete:
+      title: Anmeldedaten löschen
+      message: "Die Anmeldedaten für \"{name}\" und der zugehörige Namespace werden dauerhaft gelöscht."
+      typeHint: "Tippe \"{name}\" zur Bestätigung ein:"
+
   common:
     loading: Laden...
     retry: Wiederholen

@@ -213,6 +213,12 @@ clusterstacks:
     invalidYaml: Invalid YAML format
     missingFields: Please fill in all required fields
 
+  dialog:
+    delete:
+      title: Delete Credentials
+      message: "The credentials for \"{name}\" and its namespace will be permanently deleted."
+      typeHint: "Type \"{name}\" to confirm:"
+
   common:
     loading: Loading...
     retry: Retry

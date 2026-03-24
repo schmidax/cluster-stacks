@@ -34,7 +34,7 @@
                 class="btn btn-sm btn-delete"
                 :disabled="cred.hasClusterResources"
                 :title="cred.hasClusterResources ? t('clusterstacks.openstack.credentials.deleteBlocked') : ''"
-                @click="deleteCredential(cred)"
+                @click="requestDelete(cred)"
               >
                 {{ t('clusterstacks.common.delete') }}
               </button>
@@ -43,20 +43,32 @@
         </div>
       </div>
     </div>
+
+    <ConfirmDeleteDialog
+      :is-open="showDeleteDialog"
+      :confirmation-value="pendingDelete ? pendingDelete.name : ''"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
   </div>
 </template>
 
 <script>
 import { ROUTES } from '../../config/clusterstacks';
 import { parseCloudsYaml } from '../../services/openstack-api';
+import ConfirmDeleteDialog from '../../components/ConfirmDeleteDialog.vue';
 
 export default {
   name: 'OpenstackCredentialsList',
 
+  components: { ConfirmDeleteDialog },
+
   data() {
     return {
-      credentials: [],
-      projects:    [],
+      credentials:      [],
+      projects:         [],
+      showDeleteDialog: false,
+      pendingDelete:    null,
     };
   },
 
@@ -226,10 +238,26 @@ export default {
       });
     },
 
-    async deleteCredential(cred) {
-      if (!window.confirm(`Delete credentials for project "${cred.name}"?`)) {
+    requestDelete(cred) {
+      this.pendingDelete = cred;
+      this.showDeleteDialog = true;
+    },
+
+    cancelDelete() {
+      this.showDeleteDialog = false;
+      this.pendingDelete = null;
+    },
+
+    async confirmDelete() {
+      const cred = this.pendingDelete;
+
+      this.showDeleteDialog = false;
+      this.pendingDelete = null;
+
+      if (!cred) {
         return;
       }
+
       try {
         await this.$store.dispatch('management/request', {
           method: 'DELETE',
