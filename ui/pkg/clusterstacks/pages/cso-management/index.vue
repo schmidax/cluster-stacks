@@ -511,7 +511,7 @@ export default {
       this.saveError = null;
       this.saveSuccess = null;
       this.showConfirmSave = true;
-    },
+
       const isOci = this.provider === 'oci';
 
       return {
