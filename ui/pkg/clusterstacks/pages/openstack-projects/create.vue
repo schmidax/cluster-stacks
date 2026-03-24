@@ -6,6 +6,7 @@
 
     <OpenstackCredentialForm
       :existing="existing"
+      :existing-project-id="existingProjectId"
       :projects="projects"
       @save="onSave"
       @cancel="onCancel"
@@ -24,8 +25,9 @@ export default {
 
   data() {
     return {
-      existing: null,
-      projects: [],
+      existing:          null,
+      existingProjectId: '',
+      projects:          [],
     };
   },
 
@@ -44,10 +46,19 @@ export default {
       const { namespace } = this.$route.query;
       if (namespace) {
         try {
-          this.existing = await this.$store.dispatch('management/request', {
-            method: 'GET',
-            url:    `/api/v1/namespaces/${namespace}/secrets/openstack`,
-          });
+          const [secret, ns] = await Promise.all([
+            this.$store.dispatch('management/request', {
+              method: 'GET',
+              url:    `/api/v1/namespaces/${namespace}/secrets/openstack`,
+            }),
+            this.$store.dispatch('management/request', {
+              method: 'GET',
+              url:    `/api/v1/namespaces/${namespace}`,
+            }),
+          ]);
+
+          this.existing          = secret;
+          this.existingProjectId = ns?.metadata?.annotations?.['field.cattle.io/projectId'] || '';
         } catch {
           // ignore
         }

@@ -1,7 +1,7 @@
 <template>
   <div class="credential-form">
-    <!-- Rancher project selector (new credentials only) -->
-    <div v-if="!isEdit && projects.length" class="form-row">
+    <!-- Rancher project selector (shown for both new and existing credentials) -->
+    <div v-if="projects.length" class="form-row">
       <label class="form-label">{{ t('clusterstacks.credentialCreate.rancherProject') }}</label>
       <select v-model="selectedProjectId" class="project-select">
         <option value="">{{ t('clusterstacks.credentialCreate.rancherProjectPlaceholder') }}</option>
@@ -91,6 +91,11 @@ export default {
       default: null,
     },
 
+    existingProjectId: {
+      type:    String,
+      default: '',
+    },
+
     projects: {
       type:    Array,
       default: () => [],
@@ -142,6 +147,13 @@ export default {
       },
     },
 
+    // Sync selected project when the parent resolves the existing namespace's project
+    existingProjectId(val) {
+      if (val && !this.selectedProjectId) {
+        this.selectedProjectId = val;
+      }
+    },
+
     // Require re-test when YAML content changes (only relevant for new credentials)
     yamlContent() {
       if (!this.isEdit) {
@@ -163,6 +175,9 @@ export default {
       if (data['clouds.yaml']) {
         this.yamlContent = decode('clouds.yaml');
       }
+
+      // Pre-select the current Rancher project
+      this.selectedProjectId = this.existingProjectId;
 
       // Treat a previously saved credential as already verified
       this.connectionTested = true;
@@ -228,6 +243,20 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             data:    JSON.stringify(secretData),
           });
+
+          // Move namespace to a different Rancher project if the selection changed
+          if (this.selectedProjectId && this.selectedProjectId !== this.existingProjectId) {
+            await this.$store.dispatch('management/request', {
+              method:  'PATCH',
+              url:     `/api/v1/namespaces/${this.existing.metadata.namespace}`,
+              headers: { 'Content-Type': 'application/merge-patch+json' },
+              data:    JSON.stringify({
+                metadata: {
+                  annotations: { 'field.cattle.io/projectId': this.selectedProjectId },
+                },
+              }),
+            });
+          }
         } else {
           // Ensure the cso-{projectName} namespace exists, create it if not
           await this.ensureNamespace(this.targetNamespace);
