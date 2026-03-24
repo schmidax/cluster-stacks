@@ -728,12 +728,14 @@ export default {
     // ─── Logs ─────────────────────────────────────────────────────────
 
     openLogs(pod) {
-      // Navigate to Rancher's built-in pod log viewer
+      // Open Rancher's built-in pod log viewer in a new tab to avoid
+      // in-app navigation triggering sidebar RouterLink re-computation
+      // with a missing "cluster" param (vue-router error).
       const cluster = this.$route.params.cluster || 'local';
       const ns = pod.metadata.namespace || CSO_NAMESPACE;
       const name = pod.metadata.name;
 
-      this.$router.push(`/c/${ cluster }/explorer/pod/${ ns }/${ name }/logs`);
+      window.open(`/c/${ cluster }/explorer/pod/${ ns }/${ name }/logs`, '_blank');
     },
 
     // ─── Pod helpers ──────────────────────────────────────────────────
