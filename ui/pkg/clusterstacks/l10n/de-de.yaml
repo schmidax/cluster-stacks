@@ -2,7 +2,8 @@ clusterstacks:
   nav:
     dashboard: Dashboard
     clusters: Cluster
-    stacks: ClusterStacks
+    stacks: Stacks
+    csoManagement: Management
     openstack: OpenStack-Projekte
     openstackGroup: OpenStack
     openstackCredentials: Anmeldedaten
@@ -212,6 +213,42 @@ clusterstacks:
     saveCredentials: Fehler beim Speichern der Anmeldedaten
     invalidYaml: Ungültiges YAML-Format
     missingFields: Bitte alle Pflichtfelder ausfüllen
+
+  cso:
+    title: CSO-Verwaltung
+    installed: "Cluster Stack Operator ist installiert"
+    notInstalled: "Der Cluster Stack Operator (CSO) ist noch nicht im Namespace cso-system installiert."
+    configuration: Konfiguration
+    saveSuccess: Konfiguration erfolgreich gespeichert.
+    saveError: Konfiguration konnte nicht gespeichert werden.
+    form:
+      ociRegistry: OCI-Registry
+      ociRepository: OCI-Repository
+      ociUsername: OCI-Benutzername
+      ociPassword: OCI-Passwort
+      ociAccessToken: OCI-Access-Token
+      gitProvider: Git-Provider
+      gitOrgName: Git-Organisation
+      gitRepoName: Git-Repository-Name
+      gitAccessToken: Git-Access-Token
+    install:
+      title: CSO installieren
+      helmRepo: Helm-Repository-URL
+      helmRepoHint: "Standard: oci://registry.scs.community/cluster-stacks/cso"
+      btn: Installieren
+      error: Installation fehlgeschlagen. Bitte prüfe die Helm-Repository-URL und deine Berechtigungen.
+    pods:
+      title: Pods
+      noData: Keine Pods im Namespace cso-system gefunden.
+      name: Name
+      status: Status
+      ready: Bereit
+      restarts: Neustarts
+      age: Alter
+      viewLogs: Logs anzeigen
+    logs:
+      title: Logs
+      empty: (kein Log-Inhalt)
 
   dialog:
     delete:

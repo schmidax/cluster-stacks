@@ -9,6 +9,7 @@ export const ROUTES = {
   CLUSTERS:             'clusterstacks-clusters',
   CLUSTERS_CREATE:      'clusterstacks-clusters-create',
   STACKS:               'clusterstacks-stacks',
+  CSO_MANAGEMENT:       'clusterstacks-cso-management',
   OPENSTACK:            'clusterstacks-openstack',
   OPENSTACK_CREATE:     'clusterstacks-openstack-create',
   OPENSTACK_RESOURCES:  'clusterstacks-openstack-resources',
@@ -19,6 +20,7 @@ export const NAV = {
   DASHBOARD:            'clusterstacks-dashboard',
   CLUSTERS:             'clusterstacks-clusters',
   STACKS:               'clusterstacks-stacks',
+  CSO_MANAGEMENT:       'clusterstacks-cso-management',
   OPENSTACK:            'clusterstacks-openstack',
   OPENSTACK_RESOURCES:  'clusterstacks-openstack-resources',
 };
@@ -69,12 +71,21 @@ export function init($plugin: IPlugin, store: any) {
     showState:    true,
   });
 
-  // ClusterStacks menu item
+  // ClusterStacks menu item – Stacks sub-item
   virtualType({
     name:       NAV.STACKS,
     labelKey:   'clusterstacks.nav.stacks',
     route:      { name: ROUTES.STACKS },
     icon:       'copy',
+    weight:     81,
+  });
+
+  // ClusterStacks menu item – Management sub-item
+  virtualType({
+    name:       NAV.CSO_MANAGEMENT,
+    labelKey:   'clusterstacks.nav.csoManagement',
+    route:      { name: ROUTES.CSO_MANAGEMENT },
+    icon:       'gear',
     weight:     80,
   });
 
@@ -102,12 +113,17 @@ export function init($plugin: IPlugin, store: any) {
     weight:     70,
   });
 
-  // Add all nav items to the sidebar, OpenStack items in their own group
+  // Add all nav items to the sidebar
   basicType([
     NAV.DASHBOARD,
     NAV.CLUSTERS,
-    NAV.STACKS,
   ]);
+  // ClusterStacks group: Stacks + CSO Management
+  basicType([
+    NAV.STACKS,
+    NAV.CSO_MANAGEMENT,
+  ], 'ClusterStacks');
+  // OpenStack group
   basicType([
     NAV.OPENSTACK,
     NAV.OPENSTACK_RESOURCES,
@@ -116,7 +132,8 @@ export function init($plugin: IPlugin, store: any) {
   // Weight the nav types so they appear in the right order
   weightType(NAV.DASHBOARD,           100, true);
   weightType(NAV.CLUSTERS,             90, true);
-  weightType(NAV.STACKS,               80, true);
+  weightType(NAV.STACKS,               81, true);
+  weightType(NAV.CSO_MANAGEMENT,       80, true);
   weightType(NAV.OPENSTACK,            71, true);
   weightType(NAV.OPENSTACK_RESOURCES,  70, true);
 }

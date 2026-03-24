@@ -1,0 +1,943 @@
+<template>
+  <div class="cso-management-page">
+    <div class="page-header">
+      <h1>{{ t('clusterstacks.cso.title') }}</h1>
+      <button class="btn role-secondary" @click="load">
+        <i class="icon icon-refresh" /> {{ t('clusterstacks.common.refresh') }}
+      </button>
+    </div>
+
+    <!-- Loading -->
+    <div v-if="loading" class="loading-placeholder">
+      <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
+    </div>
+
+    <template v-else>
+      <!-- ─── INSTALLED VIEW ─────────────────────────────────────────── -->
+      <template v-if="isInstalled">
+        <!-- Status banner -->
+        <div class="status-banner banner-success">
+          <i class="icon icon-checkmark" />
+          {{ t('clusterstacks.cso.installed') }}
+          <span v-if="appVersion" class="version-tag">{{ appVersion }}</span>
+        </div>
+
+        <!-- Global error -->
+        <div v-if="saveError" class="banner banner-error mt-10">
+          {{ saveError }}
+        </div>
+        <div v-if="saveSuccess" class="banner banner-success mt-10">
+          {{ saveSuccess }}
+        </div>
+
+        <!-- ─── Configuration ──────────────────────────────────────────── -->
+        <div class="section">
+          <h2 class="section-title">{{ t('clusterstacks.cso.configuration') }}</h2>
+
+          <!-- Provider toggle -->
+          <div class="provider-toggle">
+            <button
+              class="btn btn-sm"
+              :class="provider === 'oci' ? 'role-primary' : 'role-secondary'"
+              @click="provider = 'oci'"
+            >
+              OCI
+            </button>
+            <button
+              class="btn btn-sm"
+              :class="provider === 'git' ? 'role-primary' : 'role-secondary'"
+              @click="provider = 'git'"
+            >
+              Git
+            </button>
+          </div>
+
+          <!-- OCI fields -->
+          <div v-if="provider === 'oci'" class="form-grid">
+            <div class="form-row">
+              <label>{{ t('clusterstacks.cso.form.ociRegistry') }}</label>
+              <input v-model="form.ociRegistry" type="text" class="form-input" placeholder="registry.scs.community" />
+            </div>
+            <div class="form-row">
+              <label>{{ t('clusterstacks.cso.form.ociRepository') }}</label>
+              <input v-model="form.ociRepository" type="text" class="form-input" placeholder="SovereignCloudStack/cluster-stacks" />
+            </div>
+            <div class="form-row">
+              <label>{{ t('clusterstacks.cso.form.ociUsername') }}</label>
+              <input v-model="form.ociUsername" type="text" class="form-input" />
+            </div>
+            <div class="form-row">
+              <label>{{ t('clusterstacks.cso.form.ociPassword') }}</label>
+              <input v-model="form.ociPassword" type="password" class="form-input" />
+            </div>
+            <div class="form-row">
+              <label>{{ t('clusterstacks.cso.form.ociAccessToken') }}</label>
+              <input v-model="form.ociAccessToken" type="password" class="form-input" />
+            </div>
+          </div>
+
+          <!-- Git fields -->
+          <div v-if="provider === 'git'" class="form-grid">
+            <div class="form-row">
+              <label>{{ t('clusterstacks.cso.form.gitProvider') }}</label>
+              <select v-model="form.gitProvider" class="form-input">
+                <option value="github">GitHub</option>
+                <option value="gitea">Gitea</option>
+                <option value="gitlab">GitLab</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>{{ t('clusterstacks.cso.form.gitOrgName') }}</label>
+              <input v-model="form.gitOrgName" type="text" class="form-input" placeholder="SovereignCloudStack" />
+            </div>
+            <div class="form-row">
+              <label>{{ t('clusterstacks.cso.form.gitRepoName') }}</label>
+              <input v-model="form.gitRepoName" type="text" class="form-input" placeholder="cluster-stacks" />
+            </div>
+            <div class="form-row">
+              <label>{{ t('clusterstacks.cso.form.gitAccessToken') }}</label>
+              <input v-model="form.gitAccessToken" type="password" class="form-input" />
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn role-primary" :disabled="saving" @click="saveValues">
+              <i v-if="saving" class="icon icon-spinner icon-spin" />
+              {{ t('clusterstacks.common.save') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- ─── Pods ──────────────────────────────────────────────────── -->
+        <div class="section">
+          <h2 class="section-title">{{ t('clusterstacks.cso.pods.title') }}</h2>
+
+          <div v-if="pods.length === 0" class="no-data">
+            {{ t('clusterstacks.cso.pods.noData') }}
+          </div>
+
+          <table v-else class="pods-table">
+            <thead>
+              <tr>
+                <th>{{ t('clusterstacks.cso.pods.name') }}</th>
+                <th>{{ t('clusterstacks.cso.pods.status') }}</th>
+                <th>{{ t('clusterstacks.cso.pods.ready') }}</th>
+                <th>{{ t('clusterstacks.cso.pods.restarts') }}</th>
+                <th>{{ t('clusterstacks.cso.pods.age') }}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="pod in pods" :key="pod.metadata.uid">
+                <td class="pod-name">{{ pod.metadata.name }}</td>
+                <td>
+                  <span class="phase-badge" :class="phaseClass(pod)">
+                    {{ pod.status.phase || 'Unknown' }}
+                  </span>
+                </td>
+                <td>{{ podReady(pod) }}</td>
+                <td>{{ podRestarts(pod) }}</td>
+                <td>{{ podAge(pod) }}</td>
+                <td>
+                  <button class="btn btn-sm role-secondary" @click="openLogs(pod)">
+                    {{ t('clusterstacks.cso.pods.viewLogs') }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
+      <!-- ─── INSTALL VIEW ──────────────────────────────────────────── -->
+      <template v-else>
+        <div class="install-section">
+          <div class="install-header">
+            <i class="icon icon-info" />
+            <p>{{ t('clusterstacks.cso.notInstalled') }}</p>
+          </div>
+
+          <!-- Global error -->
+          <div v-if="saveError" class="banner banner-error mt-10">
+            {{ saveError }}
+          </div>
+
+          <div class="section">
+            <h2 class="section-title">{{ t('clusterstacks.cso.install.title') }}</h2>
+
+            <!-- Helm repo -->
+            <div class="form-grid">
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.install.helmRepo') }}</label>
+                <input
+                  v-model="helmRepo"
+                  type="text"
+                  class="form-input"
+                  placeholder="oci://registry.scs.community/cluster-stacks/cso"
+                />
+                <span class="form-hint">{{ t('clusterstacks.cso.install.helmRepoHint') }}</span>
+              </div>
+            </div>
+
+            <!-- Provider toggle -->
+            <div class="provider-toggle">
+              <button
+                class="btn btn-sm"
+                :class="provider === 'oci' ? 'role-primary' : 'role-secondary'"
+                @click="provider = 'oci'"
+              >
+                OCI
+              </button>
+              <button
+                class="btn btn-sm"
+                :class="provider === 'git' ? 'role-primary' : 'role-secondary'"
+                @click="provider = 'git'"
+              >
+                Git
+              </button>
+            </div>
+
+            <!-- OCI fields -->
+            <div v-if="provider === 'oci'" class="form-grid">
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.form.ociRegistry') }}</label>
+                <input v-model="form.ociRegistry" type="text" class="form-input" placeholder="registry.scs.community" />
+              </div>
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.form.ociRepository') }}</label>
+                <input v-model="form.ociRepository" type="text" class="form-input" placeholder="SovereignCloudStack/cluster-stacks" />
+              </div>
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.form.ociUsername') }}</label>
+                <input v-model="form.ociUsername" type="text" class="form-input" />
+              </div>
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.form.ociPassword') }}</label>
+                <input v-model="form.ociPassword" type="password" class="form-input" />
+              </div>
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.form.ociAccessToken') }}</label>
+                <input v-model="form.ociAccessToken" type="password" class="form-input" />
+              </div>
+            </div>
+
+            <!-- Git fields -->
+            <div v-if="provider === 'git'" class="form-grid">
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.form.gitProvider') }}</label>
+                <select v-model="form.gitProvider" class="form-input">
+                  <option value="github">GitHub</option>
+                  <option value="gitea">Gitea</option>
+                  <option value="gitlab">GitLab</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.form.gitOrgName') }}</label>
+                <input v-model="form.gitOrgName" type="text" class="form-input" placeholder="SovereignCloudStack" />
+              </div>
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.form.gitRepoName') }}</label>
+                <input v-model="form.gitRepoName" type="text" class="form-input" placeholder="cluster-stacks" />
+              </div>
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.form.gitAccessToken') }}</label>
+                <input v-model="form.gitAccessToken" type="password" class="form-input" />
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn role-primary" :disabled="saving" @click="install">
+                <i v-if="saving" class="icon icon-spinner icon-spin" />
+                {{ t('clusterstacks.cso.install.btn') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </template>
+
+    <!-- ─── Log viewer modal ──────────────────────────────────────── -->
+    <transition name="dialog-fade">
+      <div v-if="showLogs" class="logs-overlay" @mousedown.self="closeLogs">
+        <div class="logs-dialog">
+          <div class="logs-header">
+            <span class="logs-title">{{ t('clusterstacks.cso.logs.title') }}: {{ logsForPod }}</span>
+            <button class="btn btn-sm role-secondary" @click="closeLogs">
+              <i class="icon icon-close" />
+            </button>
+          </div>
+          <div class="logs-body">
+            <div v-if="logsLoading" class="logs-loading">
+              <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
+            </div>
+            <pre v-else class="logs-content">{{ logs || t('clusterstacks.cso.logs.empty') }}</pre>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </div>
+</template>
+
+<script>
+const CSO_NAMESPACE = 'cso-system';
+const DEFAULT_HELM_REPO = 'oci://registry.scs.community/cluster-stacks/cso';
+const DEFAULT_REPO_NAME = 'cso-charts';
+
+export default {
+  name: 'CsoManagement',
+
+  data() {
+    return {
+      loading: true,
+
+      // Detected resources
+      csoApp:     null,
+      deployment: null,
+      pods:       [],
+
+      // UI state
+      provider:    'oci',
+      saving:      false,
+      saveError:   null,
+      saveSuccess: null,
+      helmRepo:    DEFAULT_HELM_REPO,
+
+      // Form values (OCI + Git fields combined)
+      form: {
+        // OCI
+        ociRegistry:    '',
+        ociRepository:  '',
+        ociUsername:    '',
+        ociPassword:    '',
+        ociAccessToken: '',
+        // Git
+        gitProvider:    'github',
+        gitOrgName:     'SovereignCloudStack',
+        gitRepoName:    'cluster-stacks',
+        gitAccessToken: '',
+      },
+
+      // Logs modal
+      showLogs:    false,
+      logsForPod:  null,
+      logs:        '',
+      logsLoading: false,
+    };
+  },
+
+  computed: {
+    isInstalled() {
+      return !!this.csoApp || !!this.deployment;
+    },
+
+    appVersion() {
+      return this.csoApp?.spec?.info?.chart?.metadata?.version || '';
+    },
+  },
+
+  async mounted() {
+    await this.load();
+  },
+
+  methods: {
+    // ─── Data loading ─────────────────────────────────────────────────
+
+    async load() {
+      this.loading = true;
+      this.saveError = null;
+      this.saveSuccess = null;
+
+      try {
+        await Promise.all([
+          this.detectCso(),
+          this.loadPods(),
+        ]);
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async detectCso() {
+      // 1. Check Rancher catalog apps in cso-system
+      try {
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/apis/catalog.cattle.io/v1/namespaces/${ CSO_NAMESPACE }/apps`,
+        });
+        const items = resp?.items || [];
+        const app = items.find((a) => {
+          const name = a.metadata?.name || '';
+
+          return name === 'cso' || name.includes('cluster-stack-operator');
+        });
+
+        if (app) {
+          this.csoApp = app;
+          this.extractValues(app.spec?.values || {});
+
+          return;
+        }
+      } catch {}
+
+      // 2. Fallback: check for a deployment in cso-system
+      try {
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/apis/apps/v1/namespaces/${ CSO_NAMESPACE }/deployments`,
+        });
+
+        this.deployment = (resp?.items || [])[0] || null;
+      } catch {
+        this.deployment = null;
+      }
+    },
+
+    async loadPods() {
+      try {
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/api/v1/namespaces/${ CSO_NAMESPACE }/pods`,
+        });
+
+        this.pods = resp?.items || [];
+      } catch {
+        this.pods = [];
+      }
+    },
+
+    // ─── Values extraction ────────────────────────────────────────────
+
+    extractValues(values) {
+      const cv = values?.clusterStackVariables || {};
+      const gitProv = cv.gitProvider || 'oci';
+
+      // Determine UI provider mode: 'oci' if gitProvider is 'oci', else 'git'
+      this.provider = gitProv === 'oci' ? 'oci' : 'git';
+
+      this.form.ociRegistry    = cv.ociRegistry    || '';
+      this.form.ociRepository  = cv.ociRepository  || '';
+      this.form.ociUsername    = cv.ociUsername     || '';
+      this.form.ociPassword    = cv.ociPassword     || '';
+      this.form.ociAccessToken = cv.ociAccessToken  || '';
+      this.form.gitProvider    = gitProv === 'oci' ? 'github' : gitProv;
+      this.form.gitOrgName     = cv.gitOrgName      || 'SovereignCloudStack';
+      this.form.gitRepoName    = cv.gitRepoName     || 'cluster-stacks';
+      this.form.gitAccessToken = cv.gitAccessToken  || '';
+    },
+
+    buildValues() {
+      const isOci = this.provider === 'oci';
+
+      return {
+        clusterStackVariables: {
+          gitProvider:    isOci ? 'oci' : this.form.gitProvider,
+          gitOrgName:     this.form.gitOrgName,
+          gitRepoName:    this.form.gitRepoName,
+          gitAccessToken: isOci ? '' : this.form.gitAccessToken,
+          ociRegistry:    isOci ? this.form.ociRegistry : '',
+          ociRepository:  isOci ? this.form.ociRepository : '',
+          ociUsername:    isOci ? this.form.ociUsername : '',
+          ociPassword:    isOci ? this.form.ociPassword : '',
+          ociAccessToken: isOci ? this.form.ociAccessToken : '',
+        },
+      };
+    },
+
+    // ─── Install ──────────────────────────────────────────────────────
+
+    async install() {
+      this.saving = true;
+      this.saveError = null;
+
+      try {
+        // 1. Ensure cso-system namespace exists
+        await this.ensureNamespace();
+
+        // 2. Ensure ClusterRepo exists
+        await this.ensureClusterRepo();
+
+        // 3. Give Rancher a moment to sync the repo index
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        // 4. Install via Rancher catalog action
+        await this.$store.dispatch('management/request', {
+          method: 'POST',
+          url:    `/v1/catalog.cattle.io.clusterrepos/${ DEFAULT_REPO_NAME }?action=install`,
+          data:   {
+            charts: [
+              {
+                chartName:   'cso',
+                version:     '',
+                releaseName: 'cso',
+                values:      this.buildValues(),
+                annotations: {},
+              },
+            ],
+            namespace:                CSO_NAMESPACE,
+            disableOpenAPIValidation: false,
+            noHooks:                  false,
+            timeout:                  '600s',
+            wait:                     false,
+          },
+        });
+
+        await this.load();
+      } catch (e) {
+        this.saveError = e?.message || this.t('clusterstacks.cso.install.error');
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    async ensureNamespace() {
+      try {
+        await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/api/v1/namespaces/${ CSO_NAMESPACE }`,
+        });
+      } catch {
+        await this.$store.dispatch('management/request', {
+          method: 'POST',
+          url:    '/api/v1/namespaces',
+          data:   {
+            apiVersion: 'v1',
+            kind:       'Namespace',
+            metadata:   { name: CSO_NAMESPACE },
+          },
+        });
+      }
+    },
+
+    async ensureClusterRepo() {
+      try {
+        // Check if repo already exists
+        await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/apis/catalog.cattle.io/v1/clusterrepos/${ DEFAULT_REPO_NAME }`,
+        });
+      } catch {
+        // Create the repo
+        await this.$store.dispatch('management/request', {
+          method: 'POST',
+          url:    '/apis/catalog.cattle.io/v1/clusterrepos',
+          data:   {
+            apiVersion: 'catalog.cattle.io/v1',
+            kind:       'ClusterRepo',
+            metadata:   { name: DEFAULT_REPO_NAME },
+            spec:       { url: this.helmRepo },
+          },
+        });
+      }
+    },
+
+    // ─── Save values (update) ─────────────────────────────────────────
+
+    async saveValues() {
+      this.saving = true;
+      this.saveError = null;
+      this.saveSuccess = null;
+
+      try {
+        if (this.csoApp) {
+          // Update via catalog App upgrade action
+          const appName = this.csoApp.metadata.name;
+
+          await this.$store.dispatch('management/request', {
+            method: 'POST',
+            url:    `/v1/catalog.cattle.io.apps/${ CSO_NAMESPACE }/${ appName }?action=upgrade`,
+            data:   {
+              charts: [
+                {
+                  chartName:   this.csoApp.spec?.chart?.metadata?.name || 'cso',
+                  version:     this.csoApp.spec?.chart?.metadata?.version || '',
+                  releaseName: appName,
+                  values:      this.buildValues(),
+                  annotations: {},
+                },
+              ],
+              namespace: CSO_NAMESPACE,
+              timeout:   '600s',
+              wait:      false,
+            },
+          });
+        }
+
+        this.saveSuccess = this.t('clusterstacks.cso.saveSuccess');
+        await this.load();
+      } catch (e) {
+        this.saveError = e?.message || this.t('clusterstacks.cso.saveError');
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    // ─── Logs ─────────────────────────────────────────────────────────
+
+    async openLogs(pod) {
+      this.logsForPod = pod.metadata.name;
+      this.logs = '';
+      this.logsLoading = true;
+      this.showLogs = true;
+
+      try {
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/api/v1/namespaces/${ CSO_NAMESPACE }/pods/${ pod.metadata.name }/log?tailLines=500`,
+        });
+
+        // The log endpoint returns plain text
+        this.logs = typeof resp === 'string' ? resp : JSON.stringify(resp, null, 2);
+      } catch (e) {
+        this.logs = `Error fetching logs: ${ e?.message || e }`;
+      } finally {
+        this.logsLoading = false;
+      }
+    },
+
+    closeLogs() {
+      this.showLogs = false;
+      this.logsForPod = null;
+      this.logs = '';
+    },
+
+    // ─── Pod helpers ──────────────────────────────────────────────────
+
+    phaseClass(pod) {
+      const phase = pod.status?.phase || '';
+
+      return {
+        'phase-running':   phase === 'Running',
+        'phase-pending':   phase === 'Pending',
+        'phase-succeeded': phase === 'Succeeded',
+        'phase-failed':    phase === 'Failed',
+        'phase-unknown':   !phase || phase === 'Unknown',
+      };
+    },
+
+    podReady(pod) {
+      const containers = pod.status?.containerStatuses || [];
+
+      if (!containers.length) {
+        return this.t('clusterstacks.common.na');
+      }
+      const ready = containers.filter((c) => c.ready).length;
+
+      return `${ ready }/${ containers.length }`;
+    },
+
+    podRestarts(pod) {
+      const containers = pod.status?.containerStatuses || [];
+
+      return containers.reduce((sum, c) => sum + (c.restartCount || 0), 0);
+    },
+
+    podAge(pod) {
+      const ts = pod.metadata?.creationTimestamp;
+
+      if (!ts) {
+        return this.t('clusterstacks.common.na');
+      }
+      const ms = Date.now() - new Date(ts).getTime();
+      const minutes = Math.floor(ms / 60000);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+
+      if (days > 0) {
+        return `${ days }d`;
+      }
+      if (hours > 0) {
+        return `${ hours }h`;
+      }
+
+      return `${ minutes }m`;
+    },
+
+    // ─── i18n ─────────────────────────────────────────────────────────
+
+    t(key, args) {
+      return this.$store.getters['i18n/t'](key, args);
+    },
+  },
+};
+</script>
+
+<style lang="scss" scoped>
+.cso-management-page {
+  padding: 20px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.loading-placeholder {
+  padding: 40px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* ─── Status banner ───────────────────────────────────────────────── */
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  background: var(--success-banner-bg, rgba(63, 185, 80, 0.12));
+  border: 1px solid var(--success, #3fb950);
+  color: var(--success, #3fb950);
+  font-weight: 500;
+}
+
+.banner-error {
+  padding: 12px 16px;
+  border-radius: 4px;
+  background: var(--error-banner-bg, rgba(185, 28, 28, 0.1));
+  border: 1px solid var(--error, #b91c1c);
+  color: var(--error, #b91c1c);
+}
+
+.banner-success {
+  padding: 12px 16px;
+  border-radius: 4px;
+  background: var(--success-banner-bg, rgba(63, 185, 80, 0.12));
+  border: 1px solid var(--success, #3fb950);
+  color: var(--success, #3fb950);
+}
+
+.mt-10 { margin-top: 10px; }
+
+.version-tag {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--success, #3fb950);
+  color: #fff;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+/* ─── Section layout ──────────────────────────────────────────────── */
+.section {
+  background: var(--box-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 1em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ─── Provider toggle ─────────────────────────────────────────────── */
+.provider-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* ─── Form ────────────────────────────────────────────────────────── */
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 520px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  label {
+    font-weight: 500;
+    font-size: 0.9em;
+    color: var(--body-text);
+  }
+}
+
+.form-input {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg, var(--box-bg));
+  color: var(--body-text);
+  font-size: 0.95em;
+
+  &:focus {
+    outline: none;
+    border-color: var(--primary);
+  }
+
+  &[type="password"] {
+    font-family: monospace;
+  }
+}
+
+.form-hint {
+  font-size: 0.82em;
+  color: var(--muted);
+}
+
+.form-actions {
+  margin-top: 16px;
+}
+
+/* ─── Not-installed section ───────────────────────────────────────── */
+.install-section {
+  .install-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 16px;
+    background: var(--info-banner-bg, rgba(56, 139, 253, 0.1));
+    border: 1px solid var(--info, #388bfd);
+    border-radius: 4px;
+    margin-bottom: 20px;
+    color: var(--info, #388bfd);
+
+    p {
+      margin: 0;
+    }
+  }
+}
+
+/* ─── Pods table ─────────────────────────────────────────────────── */
+.no-data {
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.pods-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th, td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9em;
+    color: var(--body-text);
+  }
+
+  th {
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-size: 0.8em;
+    letter-spacing: 0.04em;
+  }
+
+  tbody tr:hover {
+    background: var(--input-bg, rgba(255, 255, 255, 0.03));
+  }
+}
+
+.pod-name {
+  font-family: monospace;
+  font-size: 0.85em !important;
+}
+
+/* ─── Phase badges ───────────────────────────────────────────────── */
+.phase-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.82em;
+  font-weight: 600;
+
+  &.phase-running   { background: rgba(63, 185, 80, 0.15);  color: var(--success, #3fb950); }
+  &.phase-pending   { background: rgba(255, 193, 7, 0.15);  color: var(--warning, #e3b341); }
+  &.phase-succeeded { background: rgba(56, 139, 253, 0.15); color: var(--info, #388bfd); }
+  &.phase-failed    { background: rgba(185, 28, 28, 0.15);  color: var(--error, #b91c1c); }
+  &.phase-unknown   { background: rgba(128, 128, 128, 0.15); color: var(--muted); }
+}
+
+/* ─── Log viewer modal ───────────────────────────────────────────── */
+.logs-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.logs-dialog {
+  background: var(--box-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  width: 80vw;
+  max-width: 1100px;
+  height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.logs-title {
+  font-family: monospace;
+  font-size: 0.9em;
+  color: var(--body-text);
+  font-weight: 600;
+}
+
+.logs-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-loading {
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.logs-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  margin: 0;
+  font-family: monospace;
+  font-size: 0.82em;
+  line-height: 1.5;
+  color: var(--body-text);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ─── Transition ─────────────────────────────────────────────────── */
+.dialog-fade-enter-active,
+.dialog-fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.dialog-fade-enter-from,
+.dialog-fade-leave-to {
+  opacity: 0;
+}
+</style>

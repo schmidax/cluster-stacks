@@ -36,6 +36,14 @@ const routes: RouteConfig[] = [
     meta:      { product: PRODUCT_NAME },
   },
 
+  // CSO Management
+  {
+    name:      ROUTES.CSO_MANAGEMENT,
+    path:      `${CLUSTER_PREFIX}/cso`,
+    component: () => import(/* webpackChunkName: "clusterstacks-cso-management" */ '../pages/cso-management/index.vue'),
+    meta:      { product: PRODUCT_NAME },
+  },
+
   // OpenStack projects list
   {
     name:      ROUTES.OPENSTACK,
