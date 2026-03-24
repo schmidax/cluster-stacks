@@ -39,7 +39,7 @@ export function init($plugin: IPlugin, store: any) {
     inStore:             'management',
     icon:                'cluster-management',
     label:               'ClusterStacks',
-    to:                  { name: ROUTES.DASHBOARD },
+    to:                  { name: ROUTES.DASHBOARD, params: { cluster: BLANK_CLUSTER } },
     removable:           false,
     showClusterSwitcher: true,
     category:            'global',
@@ -49,7 +49,7 @@ export function init($plugin: IPlugin, store: any) {
   virtualType({
     name:       NAV.DASHBOARD,
     labelKey:   'clusterstacks.nav.dashboard',
-    route:      { name: ROUTES.DASHBOARD },
+    route:      { name: ROUTES.DASHBOARD, params: { cluster: BLANK_CLUSTER } },
     icon:       'gear',
     weight:     100,
   });
@@ -58,7 +58,7 @@ export function init($plugin: IPlugin, store: any) {
   virtualType({
     name:       NAV.CLUSTERS,
     labelKey:   'clusterstacks.nav.clusters',
-    route:      { name: ROUTES.CLUSTERS },
+    route:      { name: ROUTES.CLUSTERS, params: { cluster: BLANK_CLUSTER } },
     icon:       'cluster',
     weight:     90,
   });
@@ -75,7 +75,7 @@ export function init($plugin: IPlugin, store: any) {
   virtualType({
     name:       NAV.STACKS,
     labelKey:   'clusterstacks.nav.stacks',
-    route:      { name: ROUTES.STACKS },
+    route:      { name: ROUTES.STACKS, params: { cluster: BLANK_CLUSTER } },
     icon:       'copy',
     weight:     81,
   });
@@ -84,7 +84,7 @@ export function init($plugin: IPlugin, store: any) {
   virtualType({
     name:       NAV.CSO_MANAGEMENT,
     labelKey:   'clusterstacks.nav.csoManagement',
-    route:      { name: ROUTES.CSO_MANAGEMENT },
+    route:      { name: ROUTES.CSO_MANAGEMENT, params: { cluster: BLANK_CLUSTER } },
     icon:       'gear',
     weight:     80,
   });
@@ -93,7 +93,7 @@ export function init($plugin: IPlugin, store: any) {
   virtualType({
     name:       NAV.OPENSTACK,
     labelKey:   'clusterstacks.nav.openstackCredentials',
-    route:      { name: ROUTES.OPENSTACK },
+    route:      { name: ROUTES.OPENSTACK, params: { cluster: BLANK_CLUSTER } },
     icon:       'key',
     weight:     71,
   });
@@ -108,7 +108,7 @@ export function init($plugin: IPlugin, store: any) {
   virtualType({
     name:       NAV.OPENSTACK_RESOURCES,
     labelKey:   'clusterstacks.nav.openstackResources',
-    route:      { name: ROUTES.OPENSTACK_RESOURCES },
+    route:      { name: ROUTES.OPENSTACK_RESOURCES, params: { cluster: BLANK_CLUSTER } },
     icon:       'globe',
     weight:     70,
   });
