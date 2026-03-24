@@ -389,12 +389,9 @@ export default {
 
         if (app) {
           this.csoApp = app;
-          // spec.values holds the user-supplied Helm values from the last install/upgrade
-          // Some Rancher versions also put them nested under spec.info or spec.chart
-          const helmValues = app.spec?.values
-            || app.spec?.info?.values
-            || app.spec?.chart?.values
-            || {};
+          // Load user-supplied values from the Helm release secret, which stores
+          // the full release object as: base64(base64(gzip(json)))
+          const helmValues = await this.loadHelmReleaseValues(app.metadata?.name || 'cso');
 
           this.extractValues(helmValues);
 
@@ -412,6 +409,86 @@ export default {
         this.deployment = (resp?.items || [])[0] || null;
       } catch {
         this.deployment = null;
+      }
+    },
+
+    async loadHelmReleaseValues(releaseName) {
+      // Helm 3 stores release history in secrets named sh.helm.release.v1.<name>.v<N>
+      // The secret's data.release field is: base64(base64(gzip(releaseJSON)))
+      // The releaseJSON.config contains the user-supplied values.
+      try {
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/api/v1/namespaces/${ CSO_NAMESPACE }/secrets?labelSelector=owner%3Dhelm%2Cname%3D${ releaseName }`,
+        });
+
+        const secrets = resp?.items || [];
+
+        if (!secrets.length) {
+          return {};
+        }
+
+        // Find the secret with the highest version number (v<N> suffix)
+        const latest = secrets.reduce((best, s) => {
+          const m = (s.metadata?.name || '').match(/\.v(\d+)$/);
+          const v = m ? parseInt(m[1], 10) : 0;
+          const bestM = (best?.metadata?.name || '').match(/\.v(\d+)$/);
+          const bestV = bestM ? parseInt(bestM[1], 10) : 0;
+
+          return v > bestV ? s : best;
+        }, secrets[0]);
+
+        const encoded = latest?.data?.release;
+
+        if (!encoded) {
+          return {};
+        }
+
+        // Step 1: decode k8s-level base64 → Helm-level base64 string
+        const helmBase64 = atob(encoded);
+
+        // Step 2: decode Helm-level base64 → gzip bytes
+        const gzipBytes = Uint8Array.from(helmBase64, (c) => c.charCodeAt(0));
+
+        // Step 3: decompress gzip → JSON string
+        const ds = new DecompressionStream('gzip');
+        const writer = ds.writable.getWriter();
+
+        writer.write(gzipBytes);
+        writer.close();
+
+        const chunks = [];
+        const reader = ds.readable.getReader();
+
+        while (true) {
+          const { value, done } = await reader.read();
+
+          if (done) {
+            break;
+          }
+          chunks.push(value);
+        }
+
+        let totalLen = 0;
+
+        for (const c of chunks) {
+          totalLen += c.length;
+        }
+        const merged = new Uint8Array(totalLen);
+        let offset = 0;
+
+        for (const c of chunks) {
+          merged.set(c, offset);
+          offset += c.length;
+        }
+
+        const json = new TextDecoder().decode(merged);
+        const release = JSON.parse(json);
+
+        // release.config = user-supplied values; release.chart.values = chart defaults
+        return release?.config || {};
+      } catch {
+        return {};
       }
     },
 
