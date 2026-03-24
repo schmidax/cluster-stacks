@@ -1,0 +1,19 @@
+{
+  "name": "clusterstacks",
+  "description": "Rancher Dashboard UI Extension for ClusterStacks with OpenStack integration",
+  "version": "0.1.0",
+  "private": false,
+  "rancher": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@vue/cli-plugin-babel": "5.0.8",
+    "@vue/cli-service": "5.0.8",
+    "@vue/cli-plugin-typescript": "5.0.8"
+  },
+  "files": [
+    "**/*"
+  ],
+  "main": "clusterstacks-0.1.0.umd.min.js"
+}
