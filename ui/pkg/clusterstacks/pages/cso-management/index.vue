@@ -86,14 +86,6 @@
           <!-- Git fields -->
           <div v-if="provider === 'git'" class="form-grid">
             <div class="form-row">
-              <label>{{ t('clusterstacks.cso.form.gitProvider') }}</label>
-              <select v-model="form.gitProvider" class="form-input">
-                <option value="github">GitHub</option>
-                <option value="gitea">Gitea</option>
-                <option value="gitlab">GitLab</option>
-              </select>
-            </div>
-            <div class="form-row">
               <label>{{ t('clusterstacks.cso.form.gitOrgName') }}</label>
               <input v-model="form.gitOrgName" type="text" class="form-input" placeholder="SovereignCloudStack" />
             </div>
@@ -235,14 +227,6 @@
             <!-- Git fields -->
             <div v-if="provider === 'git'" class="form-grid">
               <div class="form-row">
-                <label>{{ t('clusterstacks.cso.form.gitProvider') }}</label>
-                <select v-model="form.gitProvider" class="form-input">
-                  <option value="github">GitHub</option>
-                  <option value="gitea">Gitea</option>
-                  <option value="gitlab">GitLab</option>
-                </select>
-              </div>
-              <div class="form-row">
                 <label>{{ t('clusterstacks.cso.form.gitOrgName') }}</label>
                 <input v-model="form.gitOrgName" type="text" class="form-input" placeholder="SovereignCloudStack" />
               </div>
@@ -293,26 +277,6 @@
         </div>
       </div>
     </transition>
-
-    <!-- ─── Log viewer modal ──────────────────────────────────────── -->
-    <transition name="dialog-fade">
-      <div v-if="showLogs" class="logs-overlay" @mousedown.self="closeLogs">
-        <div class="logs-dialog">
-          <div class="logs-header">
-            <span class="logs-title">{{ t('clusterstacks.cso.logs.title') }}: {{ logsForPod }}</span>
-            <button class="btn btn-sm role-secondary" @click="closeLogs">
-              <i class="icon icon-close" />
-            </button>
-          </div>
-          <div class="logs-body">
-            <div v-if="logsLoading" class="logs-loading">
-              <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
-            </div>
-            <pre v-else class="logs-content">{{ logs || t('clusterstacks.cso.logs.empty') }}</pre>
-          </div>
-        </div>
-      </div>
-    </transition>
   </div>
 </template>
 
@@ -352,7 +316,6 @@ export default {
         ociPassword:    '',
         ociAccessToken: '',
         // Git
-        gitProvider:    'github',
         gitOrgName:     '',
         gitRepoName:    '',
         gitAccessToken: '',
@@ -360,12 +323,6 @@ export default {
 
       // Snapshot of form at load time (for dirty tracking)
       originalForm: null,
-
-      // Logs modal
-      showLogs:    false,
-      logsForPod:  null,
-      logs:        '',
-      logsLoading: false,
     };
   },
 
@@ -388,7 +345,7 @@ export default {
         return true;
       }
       const fields = ['ociRegistry', 'ociRepository', 'ociUsername', 'ociPassword', 'ociAccessToken',
-        'gitProvider', 'gitOrgName', 'gitRepoName', 'gitAccessToken'];
+        'gitOrgName', 'gitRepoName', 'gitAccessToken'];
 
       return fields.some((f) => this.form[f] !== this.originalForm[f]);
     },
@@ -432,7 +389,14 @@ export default {
 
         if (app) {
           this.csoApp = app;
-          this.extractValues(app.spec?.values || {});
+          // spec.values holds the user-supplied Helm values from the last install/upgrade
+          // Some Rancher versions also put them nested under spec.info or spec.chart
+          const helmValues = app.spec?.values
+            || app.spec?.info?.values
+            || app.spec?.chart?.values
+            || {};
+
+          this.extractValues(helmValues);
 
           return;
         }
@@ -484,7 +448,6 @@ export default {
         ociUsername:    cv.ociUsername     || '',
         ociPassword:    cv.ociPassword     || '',
         ociAccessToken: cv.ociAccessToken  || '',
-        gitProvider:    storedGitProvider === 'oci' ? 'github' : storedGitProvider,
         gitOrgName:     cv.gitOrgName      || '',
         gitRepoName:    cv.gitRepoName     || '',
         gitAccessToken: cv.gitAccessToken  || '',
@@ -511,14 +474,16 @@ export default {
       this.saveError = null;
       this.saveSuccess = null;
       this.showConfirmSave = true;
+    },
 
+    buildValues() {
       const isOci = this.provider === 'oci';
 
       return {
         clusterStackVariables: {
-          gitProvider:    isOci ? 'oci' : this.form.gitProvider,
-          gitOrgName:     this.form.gitOrgName,
-          gitRepoName:    this.form.gitRepoName,
+          gitProvider:    isOci ? 'oci' : 'github',
+          gitOrgName:     isOci ? '' : this.form.gitOrgName,
+          gitRepoName:    isOci ? '' : this.form.gitRepoName,
           gitAccessToken: isOci ? '' : this.form.gitAccessToken,
           ociRegistry:    isOci ? this.form.ociRegistry : '',
           ociRepository:  isOci ? this.form.ociRepository : '',
@@ -660,31 +625,13 @@ export default {
 
     // ─── Logs ─────────────────────────────────────────────────────────
 
-    async openLogs(pod) {
-      this.logsForPod = pod.metadata.name;
-      this.logs = '';
-      this.logsLoading = true;
-      this.showLogs = true;
+    openLogs(pod) {
+      // Navigate to Rancher's built-in pod log viewer
+      const cluster = this.$route.params.cluster || 'local';
+      const ns = pod.metadata.namespace || CSO_NAMESPACE;
+      const name = pod.metadata.name;
 
-      try {
-        const resp = await this.$store.dispatch('management/request', {
-          method: 'GET',
-          url:    `/api/v1/namespaces/${ CSO_NAMESPACE }/pods/${ pod.metadata.name }/log?tailLines=500`,
-        });
-
-        // The log endpoint returns plain text
-        this.logs = typeof resp === 'string' ? resp : JSON.stringify(resp, null, 2);
-      } catch (e) {
-        this.logs = `Error fetching logs: ${ e?.message || e }`;
-      } finally {
-        this.logsLoading = false;
-      }
-    },
-
-    closeLogs() {
-      this.showLogs = false;
-      this.logsForPod = null;
-      this.logs = '';
+      this.$router.push(`/c/${ cluster }/explorer/pod/${ ns }/${ name }/logs`);
     },
 
     // ─── Pod helpers ──────────────────────────────────────────────────
@@ -975,7 +922,7 @@ export default {
   &.phase-unknown   { background: rgba(128, 128, 128, 0.15); color: var(--muted); }
 }
 
-/* ─── Log viewer modal ───────────────────────────────────────────── */
+/* ─── Modal overlay (used by confirm dialog) ─────────────────────── */
 .logs-overlay {
   position: fixed;
   inset: 0;
@@ -984,18 +931,6 @@ export default {
   align-items: center;
   justify-content: center;
   z-index: 10000;
-}
-
-.logs-dialog {
-  background: var(--box-bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  width: 80vw;
-  max-width: 1100px;
-  height: 70vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .logs-header {
@@ -1008,36 +943,9 @@ export default {
 }
 
 .logs-title {
-  font-family: monospace;
   font-size: 0.9em;
   color: var(--body-text);
   font-weight: 600;
-}
-
-.logs-body {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.logs-loading {
-  padding: 20px;
-  text-align: center;
-  color: var(--muted);
-}
-
-.logs-content {
-  flex: 1;
-  overflow: auto;
-  padding: 16px;
-  margin: 0;
-  font-family: monospace;
-  font-size: 0.82em;
-  line-height: 1.5;
-  color: var(--body-text);
-  white-space: pre-wrap;
-  word-break: break-all;
 }
 
 /* ─── Confirm dialog ─────────────────────────────────────────────── */
