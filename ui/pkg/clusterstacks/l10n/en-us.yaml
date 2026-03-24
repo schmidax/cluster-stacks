@@ -219,8 +219,14 @@ clusterstacks:
     installed: "Cluster Stack Operator is installed"
     notInstalled: "The Cluster Stack Operator (CSO) is not yet installed in the cso-system namespace."
     configuration: Configuration
+    providerLabel: "Provider:"
+    switchWarning: "Warning: When saving, the values for the other provider will be cleared. Only OCI or Git values can be active at a time."
     saveSuccess: Configuration saved successfully.
     saveError: Failed to save configuration.
+    confirmSave:
+      title: Confirm Reconfiguration
+      message: "The Cluster Stack Operator will be reconfigured with the new values. This will trigger a Helm upgrade. Do you want to continue?"
+      confirm: Apply
     form:
       ociRegistry: OCI Registry
       ociRepository: OCI Repository

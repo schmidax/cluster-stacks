@@ -16,7 +16,7 @@
       <!-- ─── INSTALLED VIEW ─────────────────────────────────────────── -->
       <template v-if="isInstalled">
         <!-- Status banner -->
-        <div class="status-banner banner-success">
+        <div class="status-banner">
           <i class="icon icon-checkmark" />
           {{ t('clusterstacks.cso.installed') }}
           <span v-if="appVersion" class="version-tag">{{ appVersion }}</span>
@@ -26,7 +26,7 @@
         <div v-if="saveError" class="banner banner-error mt-10">
           {{ saveError }}
         </div>
-        <div v-if="saveSuccess" class="banner banner-success mt-10">
+        <div v-if="saveSuccess" class="banner banner-info mt-10">
           {{ saveSuccess }}
         </div>
 
@@ -36,20 +36,27 @@
 
           <!-- Provider toggle -->
           <div class="provider-toggle">
+            <span class="toggle-label">{{ t('clusterstacks.cso.providerLabel') }}</span>
             <button
               class="btn btn-sm"
               :class="provider === 'oci' ? 'role-primary' : 'role-secondary'"
-              @click="provider = 'oci'"
+              @click="switchProvider('oci')"
             >
               OCI
             </button>
             <button
               class="btn btn-sm"
               :class="provider === 'git' ? 'role-primary' : 'role-secondary'"
-              @click="provider = 'git'"
+              @click="switchProvider('git')"
             >
               Git
             </button>
+          </div>
+
+          <!-- Switch warning -->
+          <div v-if="providerSwitched" class="banner banner-warning mt-10">
+            <i class="icon icon-warning" />
+            {{ t('clusterstacks.cso.switchWarning') }}
           </div>
 
           <!-- OCI fields -->
@@ -101,7 +108,11 @@
           </div>
 
           <div class="form-actions">
-            <button class="btn role-primary" :disabled="saving" @click="saveValues">
+            <button
+              class="btn role-primary"
+              :disabled="saving || !isDirty"
+              @click="requestSave"
+            >
               <i v-if="saving" class="icon icon-spinner icon-spin" />
               {{ t('clusterstacks.common.save') }}
             </button>
@@ -256,6 +267,33 @@
       </template>
     </template>
 
+    <!-- ─── Save confirmation dialog ─────────────────────────────── -->
+    <transition name="dialog-fade">
+      <div v-if="showConfirmSave" class="logs-overlay" @mousedown.self="showConfirmSave = false">
+        <div class="confirm-dialog">
+          <div class="logs-header">
+            <span class="logs-title">{{ t('clusterstacks.cso.confirmSave.title') }}</span>
+          </div>
+          <div class="confirm-body">
+            <p>{{ t('clusterstacks.cso.confirmSave.message') }}</p>
+            <div v-if="providerSwitched" class="banner banner-warning">
+              <i class="icon icon-warning" />
+              {{ t('clusterstacks.cso.switchWarning') }}
+            </div>
+          </div>
+          <div class="confirm-actions">
+            <button class="btn role-secondary" @click="showConfirmSave = false">
+              {{ t('clusterstacks.common.cancel') }}
+            </button>
+            <button class="btn role-primary" :disabled="saving" @click="saveValues">
+              <i v-if="saving" class="icon icon-spinner icon-spin" />
+              {{ t('clusterstacks.cso.confirmSave.confirm') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- ─── Log viewer modal ──────────────────────────────────────── -->
     <transition name="dialog-fade">
       <div v-if="showLogs" class="logs-overlay" @mousedown.self="closeLogs">
@@ -296,11 +334,14 @@ export default {
       pods:       [],
 
       // UI state
-      provider:    'oci',
-      saving:      false,
-      saveError:   null,
-      saveSuccess: null,
-      helmRepo:    DEFAULT_HELM_REPO,
+      provider:         'oci',
+      originalProvider: 'oci',
+      providerSwitched: false,
+      saving:           false,
+      saveError:        null,
+      saveSuccess:      null,
+      showConfirmSave:  false,
+      helmRepo:         DEFAULT_HELM_REPO,
 
       // Form values (OCI + Git fields combined)
       form: {
@@ -312,10 +353,13 @@ export default {
         ociAccessToken: '',
         // Git
         gitProvider:    'github',
-        gitOrgName:     'SovereignCloudStack',
-        gitRepoName:    'cluster-stacks',
+        gitOrgName:     '',
+        gitRepoName:    '',
         gitAccessToken: '',
       },
+
+      // Snapshot of form at load time (for dirty tracking)
+      originalForm: null,
 
       // Logs modal
       showLogs:    false,
@@ -331,7 +375,22 @@ export default {
     },
 
     appVersion() {
-      return this.csoApp?.spec?.info?.chart?.metadata?.version || '';
+      return this.csoApp?.spec?.chart?.metadata?.version
+        || this.csoApp?.spec?.info?.chart?.metadata?.version
+        || '';
+    },
+
+    isDirty() {
+      if (!this.originalForm) {
+        return true;
+      }
+      if (this.provider !== this.originalProvider) {
+        return true;
+      }
+      const fields = ['ociRegistry', 'ociRepository', 'ociUsername', 'ociPassword', 'ociAccessToken',
+        'gitProvider', 'gitOrgName', 'gitRepoName', 'gitAccessToken'];
+
+      return fields.some((f) => this.form[f] !== this.originalForm[f]);
     },
   },
 
@@ -408,24 +467,51 @@ export default {
     // ─── Values extraction ────────────────────────────────────────────
 
     extractValues(values) {
+      // values is the Helm values object, e.g. { clusterStackVariables: { gitProvider: 'oci', ... } }
       const cv = values?.clusterStackVariables || {};
-      const gitProv = cv.gitProvider || 'oci';
 
-      // Determine UI provider mode: 'oci' if gitProvider is 'oci', else 'git'
-      this.provider = gitProv === 'oci' ? 'oci' : 'git';
+      // gitProvider === 'oci' → OCI mode; anything else (github/gitea/gitlab) → Git mode
+      const storedGitProvider = cv.gitProvider || 'oci';
+      const uiProvider = storedGitProvider === 'oci' ? 'oci' : 'git';
 
-      this.form.ociRegistry    = cv.ociRegistry    || '';
-      this.form.ociRepository  = cv.ociRepository  || '';
-      this.form.ociUsername    = cv.ociUsername     || '';
-      this.form.ociPassword    = cv.ociPassword     || '';
-      this.form.ociAccessToken = cv.ociAccessToken  || '';
-      this.form.gitProvider    = gitProv === 'oci' ? 'github' : gitProv;
-      this.form.gitOrgName     = cv.gitOrgName      || 'SovereignCloudStack';
-      this.form.gitRepoName    = cv.gitRepoName     || 'cluster-stacks';
-      this.form.gitAccessToken = cv.gitAccessToken  || '';
+      this.provider = uiProvider;
+      this.originalProvider = uiProvider;
+      this.providerSwitched = false;
+
+      const newForm = {
+        ociRegistry:    cv.ociRegistry    || '',
+        ociRepository:  cv.ociRepository  || '',
+        ociUsername:    cv.ociUsername     || '',
+        ociPassword:    cv.ociPassword     || '',
+        ociAccessToken: cv.ociAccessToken  || '',
+        gitProvider:    storedGitProvider === 'oci' ? 'github' : storedGitProvider,
+        gitOrgName:     cv.gitOrgName      || '',
+        gitRepoName:    cv.gitRepoName     || '',
+        gitAccessToken: cv.gitAccessToken  || '',
+      };
+
+      this.form = newForm;
+      // Deep copy for dirty tracking
+      this.originalForm = { ...newForm };
     },
 
-    buildValues() {
+    // ─── Provider toggle ──────────────────────────────────────────────
+
+    switchProvider(newProvider) {
+      if (newProvider === this.provider) {
+        return;
+      }
+      this.provider = newProvider;
+      this.providerSwitched = newProvider !== this.originalProvider;
+    },
+
+    // ─── Save flow ────────────────────────────────────────────────────
+
+    requestSave() {
+      this.saveError = null;
+      this.saveSuccess = null;
+      this.showConfirmSave = true;
+    },
       const isOci = this.provider === 'oci';
 
       return {
@@ -533,6 +619,7 @@ export default {
     // ─── Save values (update) ─────────────────────────────────────────
 
     async saveValues() {
+      this.showConfirmSave = false;
       this.saving = true;
       this.saveError = null;
       this.saveSuccess = null;
@@ -694,6 +781,9 @@ export default {
 }
 
 .banner-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 12px 16px;
   border-radius: 4px;
   background: var(--error-banner-bg, rgba(185, 28, 28, 0.1));
@@ -701,12 +791,23 @@ export default {
   color: var(--error, #b91c1c);
 }
 
-.banner-success {
+.banner-info {
   padding: 12px 16px;
   border-radius: 4px;
-  background: var(--success-banner-bg, rgba(63, 185, 80, 0.12));
-  border: 1px solid var(--success, #3fb950);
-  color: var(--success, #3fb950);
+  background: var(--info-banner-bg, rgba(56, 139, 253, 0.1));
+  border: 1px solid var(--info, #388bfd);
+  color: var(--info, #388bfd);
+}
+
+.banner-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid var(--warning, #e3b341);
+  color: var(--warning, #e3b341);
 }
 
 .mt-10 { margin-top: 10px; }
@@ -744,8 +845,16 @@ export default {
 /* ─── Provider toggle ─────────────────────────────────────────────── */
 .provider-toggle {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+.toggle-label {
+  font-size: 0.9em;
+  font-weight: 500;
+  color: var(--body-text);
+  margin-right: 4px;
 }
 
 /* ─── Form ────────────────────────────────────────────────────────── */
@@ -929,6 +1038,39 @@ export default {
   color: var(--body-text);
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* ─── Confirm dialog ─────────────────────────────────────────────── */
+.confirm-dialog {
+  background: var(--box-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  width: 480px;
+  max-width: 95vw;
+  display: flex;
+  flex-direction: column;
+}
+
+.confirm-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  p {
+    margin: 0;
+    color: var(--body-text);
+    line-height: 1.5;
+  }
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
 }
 
 /* ─── Transition ─────────────────────────────────────────────────── */

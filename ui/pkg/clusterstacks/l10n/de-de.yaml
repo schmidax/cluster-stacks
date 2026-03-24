@@ -219,8 +219,14 @@ clusterstacks:
     installed: "Cluster Stack Operator ist installiert"
     notInstalled: "Der Cluster Stack Operator (CSO) ist noch nicht im Namespace cso-system installiert."
     configuration: Konfiguration
+    providerLabel: "Provider:"
+    switchWarning: "Achtung: Beim Speichern werden die Werte des anderen Providers geleert. Es können immer nur OCI- oder Git-Werte aktiv sein."
     saveSuccess: Konfiguration erfolgreich gespeichert.
     saveError: Konfiguration konnte nicht gespeichert werden.
+    confirmSave:
+      title: Umkonfiguration bestätigen
+      message: "Der Cluster Stack Operator wird mit den neuen Werten umkonfiguriert. Dabei wird ein Helm-Upgrade ausgeführt. Möchtest du fortfahren?"
+      confirm: Anwenden
     form:
       ociRegistry: OCI-Registry
       ociRepository: OCI-Repository
