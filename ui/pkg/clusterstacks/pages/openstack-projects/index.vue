@@ -179,7 +179,10 @@ export default {
 
     async loadProjects() {
       try {
-        const clusterId = this.$route.params.cluster;
+        // In Rancher Dashboard the local/management cluster is represented by '_' in the URL,
+        // but the Steve API namespaces its resources under 'local'.
+        const rawCluster = this.$route.params.cluster;
+        const clusterId = rawCluster === '_' ? 'local' : rawCluster;
         const all = await this.$store.dispatch('management/findAll', { type: 'management.cattle.io.project' });
 
         // Projects are namespaced to their cluster in the Steve API (metadata.namespace = clusterId)
