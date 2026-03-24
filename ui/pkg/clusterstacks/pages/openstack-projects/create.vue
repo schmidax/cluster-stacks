@@ -73,8 +73,11 @@ export default {
         const clusterId = rawCluster === '_' ? 'local' : rawCluster;
         const all = await this.$store.dispatch('management/findAll', { type: 'management.cattle.io.project' });
 
-        // Projects are namespaced to their cluster in the Steve API (metadata.namespace = clusterId)
-        this.projects = (all || []).filter((p) => (p.metadata?.namespace || p.spec?.clusterName) === clusterId);
+        // Projects are namespaced to their cluster in the Steve API (metadata.namespace = clusterId).
+        // Only expose projects whose display name starts with "cso-".
+        this.projects = (all || [])
+          .filter((p) => (p.metadata?.namespace || p.spec?.clusterName) === clusterId)
+          .filter((p) => (p.spec?.displayName || p.metadata?.name || '').startsWith('cso-'));
       } catch {
         this.projects = [];
       }

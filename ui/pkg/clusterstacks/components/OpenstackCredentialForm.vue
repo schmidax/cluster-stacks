@@ -5,7 +5,7 @@
       <label class="form-label">{{ t('clusterstacks.credentialCreate.rancherProject') }}</label>
       <select v-model="selectedProjectId" class="project-select">
         <option value="">{{ t('clusterstacks.credentialCreate.rancherProjectPlaceholder') }}</option>
-        <option v-for="p in projects" :key="p.id" :value="p.id">
+        <option v-for="p in projects" :key="p.id" :value="(p.id || '').replace('/', ':')">
           {{ p.spec && p.spec.displayName ? p.spec.displayName : (p.name || p.id) }}
         </option>
       </select>
@@ -305,17 +305,23 @@ export default {
 
     buildSecretData() {
       const encode = (v) => btoa(v || '');
+      const metadata = {
+        name:      'openstack',
+        namespace: this.isEdit ? this.existing.metadata.namespace : this.targetNamespace,
+      };
+
+      // resourceVersion is required by the Kubernetes API for PUT requests (optimistic concurrency).
+      if (this.isEdit && this.existing.metadata?.resourceVersion) {
+        metadata.resourceVersion = this.existing.metadata.resourceVersion;
+      }
 
       return {
         apiVersion: 'v1',
         kind:       'Secret',
-        metadata:   {
-          name:      'openstack',
-          namespace: this.isEdit ? this.existing.metadata.namespace : this.targetNamespace,
-        },
+        metadata,
         type: 'Opaque',
         data: {
-          projectName:  encode(this.form.projectName),
+          projectName:   encode(this.form.projectName),
           'clouds.yaml': encode(this.yamlContent),
         },
       };
