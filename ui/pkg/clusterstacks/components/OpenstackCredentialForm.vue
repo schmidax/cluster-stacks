@@ -6,7 +6,7 @@
       <select v-model="selectedProjectId" class="project-select">
         <option value="">{{ t('clusterstacks.credentialCreate.rancherProjectPlaceholder') }}</option>
         <option v-for="p in projects" :key="p.id" :value="p.id">
-          {{ p.spec && p.spec.displayName ? p.spec.displayName : p.id }}
+          {{ p.spec && p.spec.displayName ? p.spec.displayName : (p.name || p.id) }}
         </option>
       </select>
     </div>

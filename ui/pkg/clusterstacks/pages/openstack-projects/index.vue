@@ -63,7 +63,7 @@ export default {
       for (const p of this.projects) {
         // Prefer the human-readable display name; fall back to the short project id (never
         // to the compound "clusterId:projectId" form, which would look like two segments).
-        const displayName = p.spec?.displayName || p.metadata?.name || p.id;
+        const displayName = p.spec?.displayName || p.name || p.metadata?.name || p.id;
 
         // Rancher v3 projects have an id like "c-xxxxx:p-xxxxx"
         if (p.id) {
