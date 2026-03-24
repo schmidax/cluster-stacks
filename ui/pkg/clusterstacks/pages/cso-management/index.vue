@@ -78,7 +78,7 @@
               <div class="password-wrapper">
                 <input v-model="form.ociPassword" :type="showPasswords.ociPassword ? 'text' : 'password'" class="form-input" />
                 <button type="button" class="password-toggle" @click="toggleShowPassword('ociPassword')">
-                  <i :class="showPasswords.ociPassword ? 'icon icon-view' : 'icon icon-hide'" />
+                  <i :class="showPasswords.ociPassword ? 'icon icon-hide' : 'icon icon-show'" />
                 </button>
               </div>
             </div>
@@ -87,7 +87,7 @@
               <div class="password-wrapper">
                 <input v-model="form.ociAccessToken" :type="showPasswords.ociAccessToken ? 'text' : 'password'" class="form-input" />
                 <button type="button" class="password-toggle" @click="toggleShowPassword('ociAccessToken')">
-                  <i :class="showPasswords.ociAccessToken ? 'icon icon-view' : 'icon icon-hide'" />
+                  <i :class="showPasswords.ociAccessToken ? 'icon icon-hide' : 'icon icon-show'" />
                 </button>
               </div>
             </div>
@@ -108,7 +108,7 @@
               <div class="password-wrapper">
                 <input v-model="form.gitAccessToken" :type="showPasswords.gitAccessToken ? 'text' : 'password'" class="form-input" />
                 <button type="button" class="password-toggle" @click="toggleShowPassword('gitAccessToken')">
-                  <i :class="showPasswords.gitAccessToken ? 'icon icon-view' : 'icon icon-hide'" />
+                  <i :class="showPasswords.gitAccessToken ? 'icon icon-hide' : 'icon icon-show'" />
                 </button>
               </div>
             </div>
@@ -234,7 +234,7 @@
                 <div class="password-wrapper">
                   <input v-model="form.ociPassword" :type="showPasswords.ociPassword ? 'text' : 'password'" class="form-input" />
                   <button type="button" class="password-toggle" @click="toggleShowPassword('ociPassword')">
-                    <i :class="showPasswords.ociPassword ? 'icon icon-view' : 'icon icon-hide'" />
+                    <i :class="showPasswords.ociPassword ? 'icon icon-hide' : 'icon icon-show'" />
                   </button>
                 </div>
               </div>
@@ -243,7 +243,7 @@
                 <div class="password-wrapper">
                   <input v-model="form.ociAccessToken" :type="showPasswords.ociAccessToken ? 'text' : 'password'" class="form-input" />
                   <button type="button" class="password-toggle" @click="toggleShowPassword('ociAccessToken')">
-                    <i :class="showPasswords.ociAccessToken ? 'icon icon-view' : 'icon icon-hide'" />
+                    <i :class="showPasswords.ociAccessToken ? 'icon icon-hide' : 'icon icon-show'" />
                   </button>
                 </div>
               </div>
@@ -264,7 +264,7 @@
                 <div class="password-wrapper">
                   <input v-model="form.gitAccessToken" :type="showPasswords.gitAccessToken ? 'text' : 'password'" class="form-input" />
                   <button type="button" class="password-toggle" @click="toggleShowPassword('gitAccessToken')">
-                    <i :class="showPasswords.gitAccessToken ? 'icon icon-view' : 'icon icon-hide'" />
+                    <i :class="showPasswords.gitAccessToken ? 'icon icon-hide' : 'icon icon-show'" />
                   </button>
                 </div>
               </div>
