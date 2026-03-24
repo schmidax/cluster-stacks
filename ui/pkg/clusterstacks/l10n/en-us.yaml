@@ -102,6 +102,7 @@ clusterstacks:
     credentials:
       title: OpenStack Credentials
       noProject: No Project
+      deleteBlocked: Cannot delete – active clusters exist in this namespace
     resources:
       title: Resources
       credential: Credential

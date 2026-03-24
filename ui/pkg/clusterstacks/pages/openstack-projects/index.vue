@@ -30,7 +30,12 @@
               <button class="btn btn-sm role-secondary" @click="editCredential(cred)">
                 {{ t('clusterstacks.common.edit') }}
               </button>
-              <button class="btn btn-sm role-danger" @click="deleteCredential(cred)">
+              <button
+                class="btn btn-sm btn-delete"
+                :disabled="cred.hasClusterResources"
+                :title="cred.hasClusterResources ? t('clusterstacks.openstack.credentials.deleteBlocked') : ''"
+                @click="deleteCredential(cred)"
+              >
                 {{ t('clusterstacks.common.delete') }}
               </button>
             </div>
@@ -142,16 +147,33 @@ export default {
         );
 
         const results = await Promise.allSettled(
-          csoNamespaces.map((ns) => this.$store.dispatch('management/request', {
-            method: 'GET',
-            url:    `/api/v1/namespaces/${ns.metadata.name}/secrets/openstack`,
-          })),
+          csoNamespaces.map(async(ns) => {
+            const [secretResult, clusterResult] = await Promise.allSettled([
+              this.$store.dispatch('management/request', {
+                method: 'GET',
+                url:    `/api/v1/namespaces/${ns.metadata.name}/secrets/openstack`,
+              }),
+              this.$store.dispatch('management/request', {
+                method: 'GET',
+                url:    `/apis/cluster.x-k8s.io/v1beta1/namespaces/${ns.metadata.name}/clusters`,
+              }),
+            ]);
+
+            if (secretResult.status === 'rejected') {
+              throw secretResult.reason;
+            }
+
+            return {
+              secret:              secretResult.value,
+              hasClusterResources: clusterResult.status === 'fulfilled' && (clusterResult.value?.items?.length || 0) > 0,
+            };
+          }),
         );
 
         this.credentials = results
           .filter((r) => r.status === 'fulfilled')
           .map((r) => {
-            const s = r.value;
+            const { secret: s, hasClusterResources } = r.value;
             const ns = s.metadata.namespace;
             const nsObj = csoNamespaces.find((n) => n.metadata.name === ns);
             // Rancher annotates namespaces with the full "clusterId:projectId"
@@ -169,7 +191,8 @@ export default {
               authUrl,
               cloudsYaml,
               projectId,
-              raw:       s,
+              raw: s,
+              hasClusterResources,
             };
           });
       } catch {
@@ -211,6 +234,11 @@ export default {
         await this.$store.dispatch('management/request', {
           method: 'DELETE',
           url:    `/api/v1/namespaces/${cred.namespace}/secrets/openstack`,
+        });
+        // Also delete the namespace itself
+        await this.$store.dispatch('management/request', {
+          method: 'DELETE',
+          url:    `/api/v1/namespaces/${cred.namespace}`,
         });
         await this.loadCredentials();
       } catch (e) {
@@ -274,13 +302,13 @@ export default {
 
   .cred-name {
     flex: 0 0 200px;
-    color: var(--muted);
+    color: var(--body-text);
     font-size: 0.85em;
   }
 
   .cred-detail {
     flex: 1;
-    color: var(--muted);
+    color: var(--body-text);
     font-size: 0.9em;
     font-family: monospace;
   }
@@ -288,6 +316,22 @@ export default {
   .cred-actions {
     display: flex;
     gap: 8px;
+  }
+}
+
+.btn-delete {
+  background-color: var(--error, #b91c1c);
+  border-color: var(--error, #b91c1c);
+  color: #fff;
+
+  &:not(:disabled):hover {
+    background-color: var(--error-hover, #991b1b);
+    border-color: var(--error-hover, #991b1b);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
 </style>

@@ -102,6 +102,7 @@ clusterstacks:
     credentials:
       title: OpenStack-Anmeldedaten
       noProject: Kein Projekt
+      deleteBlocked: Löschen nicht möglich – in diesem Namespace existieren aktive Cluster
     resources:
       title: Ressourcen
       credential: Anmeldedaten
