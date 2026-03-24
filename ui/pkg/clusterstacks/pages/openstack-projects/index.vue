@@ -63,11 +63,17 @@ export default {
       for (const p of this.projects) {
         // Prefer the human-readable display name; fall back to the short project id (never
         // to the compound "clusterId:projectId" form, which would look like two segments).
-        const displayName = p.spec?.displayName || p.name || p.metadata?.name || p.id;
+        const shortId = p.id?.includes(':') ? p.id.split(':').slice(1).join(':') : p.id;
+        const displayName = p.spec?.displayName || p.name || p.metadata?.name || shortId || p.id;
 
-        // Rancher v3 projects have an id like "c-xxxxx:p-xxxxx"
+        // Rancher v3 projects have an id like "c-xxxxx:p-xxxxx"; index by both the full
+        // compound id and the short id so lookups succeed regardless of which form is stored
+        // in the namespace annotation.
         if (p.id) {
           map[p.id] = displayName;
+        }
+        if (shortId && shortId !== p.id) {
+          map[shortId] = displayName;
         }
         if (p.metadata?.name) {
           map[p.metadata.name] = displayName;
@@ -90,11 +96,11 @@ export default {
             projectName = this.t('clusterstacks.openstack.credentials.noProject');
           } else {
             // projectMap[key] returns the human-readable name when projects are loaded.
-            // Fall back to just the short project-id part (after the colon in
-            // "clusterId:projectId") so the header never shows a compound identifier.
+            // Also try the short project-id part (after the colon in "clusterId:projectId")
+            // as a secondary lookup in case the API and annotation use different id formats.
             const shortKey = key.includes(':') ? key.split(':').slice(1).join(':') : key;
 
-            projectName = this.projectMap[key] || shortKey;
+            projectName = this.projectMap[key] || this.projectMap[shortKey] || shortKey;
           }
 
           groups[key] = {
