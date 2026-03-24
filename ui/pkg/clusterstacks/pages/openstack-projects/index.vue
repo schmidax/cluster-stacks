@@ -24,6 +24,7 @@
             :key="cred.name"
             class="credential-item"
           >
+            <div class="cred-name">{{ cred.name }}</div>
             <div class="cred-detail">{{ cred.authUrl }}</div>
             <div class="cred-actions">
               <button class="btn btn-sm role-secondary" @click="editCredential(cred)">
@@ -60,7 +61,9 @@ export default {
       const map = {};
 
       for (const p of this.projects) {
-        const displayName = p.spec?.displayName || p.id || p.metadata?.name;
+        // Prefer the human-readable display name; fall back to the short project id (never
+        // to the compound "clusterId:projectId" form, which would look like two segments).
+        const displayName = p.spec?.displayName || p.metadata?.name || p.id;
 
         // Rancher v3 projects have an id like "c-xxxxx:p-xxxxx"
         if (p.id) {
@@ -86,7 +89,12 @@ export default {
           if (key === noProjectKey) {
             projectName = this.t('clusterstacks.openstack.credentials.noProject');
           } else {
-            projectName = this.projectMap[key] || key;
+            // projectMap[key] returns the human-readable name when projects are loaded.
+            // Fall back to just the short project-id part (after the colon in
+            // "clusterId:projectId") so the header never shows a compound identifier.
+            const shortKey = key.includes(':') ? key.split(':').slice(1).join(':') : key;
+
+            projectName = this.projectMap[key] || shortKey;
           }
 
           groups[key] = {
@@ -256,6 +264,12 @@ export default {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--box-bg);
+
+  .cred-name {
+    flex: 0 0 200px;
+    color: var(--muted);
+    font-size: 0.85em;
+  }
 
   .cred-detail {
     flex: 1;
