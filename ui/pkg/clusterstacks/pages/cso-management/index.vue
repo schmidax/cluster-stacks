@@ -391,7 +391,7 @@ export default {
           this.csoApp = app;
           // Load user-supplied values from the Helm release secret, which stores
           // the full release object as: base64(base64(gzip(json)))
-          const helmValues = await this.loadHelmReleaseValues(app.metadata?.name || 'cso');
+          const helmValues = await this.loadHelmReleaseValues(app.metadata?.annotations['objectset.rio.cattle.io/owner-name'] || 'cso');
 
           this.extractValues(helmValues);
 
@@ -419,33 +419,17 @@ export default {
       try {
         const resp = await this.$store.dispatch('management/request', {
           method: 'GET',
-          url:    `/api/v1/namespaces/${ CSO_NAMESPACE }/secrets?labelSelector=owner%3Dhelm%2Cname%3D${ releaseName }`,
+		url:    `/api/v1/namespaces/${ CSO_NAMESPACE }/secrets/${releaseName}`,
         });
 
-        const secrets = resp?.items || [];
-
-        if (!secrets.length) {
-          return {};
-        }
-
-        // Find the secret with the highest version number (v<N> suffix)
-        const latest = secrets.reduce((best, s) => {
-          const m = (s.metadata?.name || '').match(/\.v(\d+)$/);
-          const v = m ? parseInt(m[1], 10) : 0;
-          const bestM = (best?.metadata?.name || '').match(/\.v(\d+)$/);
-          const bestV = bestM ? parseInt(bestM[1], 10) : 0;
-
-          return v > bestV ? s : best;
-        }, secrets[0]);
-
-        const encoded = latest?.data?.release;
+        const encoded = resp?.data?.release;
 
         if (!encoded) {
           return {};
         }
 
         // Step 1: decode k8s-level base64 → Helm-level base64 string
-        const helmBase64 = atob(encoded);
+        const helmBase64 = atob(atob(encoded));
 
         // Step 2: decode Helm-level base64 → gzip bytes
         const gzipBytes = Uint8Array.from(helmBase64, (c) => c.charCodeAt(0));
