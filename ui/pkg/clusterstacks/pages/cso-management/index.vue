@@ -75,11 +75,21 @@
             </div>
             <div class="form-row">
               <label>{{ t('clusterstacks.cso.form.ociPassword') }}</label>
-              <input v-model="form.ociPassword" type="password" class="form-input" />
+              <div class="password-wrapper">
+                <input v-model="form.ociPassword" :type="showPasswords.ociPassword ? 'text' : 'password'" class="form-input" />
+                <button type="button" class="password-toggle" @click="toggleShowPassword('ociPassword')">
+                  <i :class="showPasswords.ociPassword ? 'icon icon-view' : 'icon icon-hide'" />
+                </button>
+              </div>
             </div>
             <div class="form-row">
               <label>{{ t('clusterstacks.cso.form.ociAccessToken') }}</label>
-              <input v-model="form.ociAccessToken" type="password" class="form-input" />
+              <div class="password-wrapper">
+                <input v-model="form.ociAccessToken" :type="showPasswords.ociAccessToken ? 'text' : 'password'" class="form-input" />
+                <button type="button" class="password-toggle" @click="toggleShowPassword('ociAccessToken')">
+                  <i :class="showPasswords.ociAccessToken ? 'icon icon-view' : 'icon icon-hide'" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -95,7 +105,12 @@
             </div>
             <div class="form-row">
               <label>{{ t('clusterstacks.cso.form.gitAccessToken') }}</label>
-              <input v-model="form.gitAccessToken" type="password" class="form-input" />
+              <div class="password-wrapper">
+                <input v-model="form.gitAccessToken" :type="showPasswords.gitAccessToken ? 'text' : 'password'" class="form-input" />
+                <button type="button" class="password-toggle" @click="toggleShowPassword('gitAccessToken')">
+                  <i :class="showPasswords.gitAccessToken ? 'icon icon-view' : 'icon icon-hide'" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -216,11 +231,21 @@
               </div>
               <div class="form-row">
                 <label>{{ t('clusterstacks.cso.form.ociPassword') }}</label>
-                <input v-model="form.ociPassword" type="password" class="form-input" />
+                <div class="password-wrapper">
+                  <input v-model="form.ociPassword" :type="showPasswords.ociPassword ? 'text' : 'password'" class="form-input" />
+                  <button type="button" class="password-toggle" @click="toggleShowPassword('ociPassword')">
+                    <i :class="showPasswords.ociPassword ? 'icon icon-view' : 'icon icon-hide'" />
+                  </button>
+                </div>
               </div>
               <div class="form-row">
                 <label>{{ t('clusterstacks.cso.form.ociAccessToken') }}</label>
-                <input v-model="form.ociAccessToken" type="password" class="form-input" />
+                <div class="password-wrapper">
+                  <input v-model="form.ociAccessToken" :type="showPasswords.ociAccessToken ? 'text' : 'password'" class="form-input" />
+                  <button type="button" class="password-toggle" @click="toggleShowPassword('ociAccessToken')">
+                    <i :class="showPasswords.ociAccessToken ? 'icon icon-view' : 'icon icon-hide'" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -236,7 +261,12 @@
               </div>
               <div class="form-row">
                 <label>{{ t('clusterstacks.cso.form.gitAccessToken') }}</label>
-                <input v-model="form.gitAccessToken" type="password" class="form-input" />
+                <div class="password-wrapper">
+                  <input v-model="form.gitAccessToken" :type="showPasswords.gitAccessToken ? 'text' : 'password'" class="form-input" />
+                  <button type="button" class="password-toggle" @click="toggleShowPassword('gitAccessToken')">
+                    <i :class="showPasswords.gitAccessToken ? 'icon icon-view' : 'icon icon-hide'" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -323,6 +353,13 @@ export default {
 
       // Snapshot of form at load time (for dirty tracking)
       originalForm: null,
+
+      // Show/hide state for password fields
+      showPasswords: {
+        ociPassword:    false,
+        ociAccessToken: false,
+        gitAccessToken: false,
+      },
     };
   },
 
@@ -527,6 +564,10 @@ export default {
       }
       this.provider = newProvider;
       this.providerSwitched = newProvider !== this.originalProvider;
+    },
+
+    toggleShowPassword(field) {
+      this.showPasswords[field] = !this.showPasswords[field];
     },
 
     // ─── Save flow ────────────────────────────────────────────────────
@@ -900,6 +941,34 @@ export default {
 
   &[type="password"] {
     font-family: monospace;
+  }
+}
+
+.password-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  .form-input {
+    flex: 1;
+  }
+
+  .password-toggle {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    color: var(--muted);
+    line-height: 1;
+
+    &:hover {
+      color: var(--body-text);
+    }
+
+    .icon {
+      font-size: 1.1em;
+    }
   }
 }
 
