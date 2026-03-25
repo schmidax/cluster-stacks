@@ -310,9 +310,14 @@ clusterstacks:
       addVariable: Variable hinzufügen
       variableNamePlaceholder: Variablenname
       variableValuePlaceholder: Wert
+      nameSelectTypFirst: Erst einen Provider-Typ auswählen
+      nameAlreadyExists: Ein Provider mit diesem Namen existiert bereits.
+      loadingProviders: Providerliste wird geladen...
     logs:
       title: Provider-Logs
       noPods: Keine Pods im Namespace gefunden.
       viewLogs: Logs anzeigen
+      restartProvider: Provider neustarten
+      restartPod: Pod neustarten
     errors:
       save: CAPI Provider konnte nicht gespeichert werden.

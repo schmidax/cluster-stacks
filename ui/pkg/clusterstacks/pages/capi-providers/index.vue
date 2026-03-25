@@ -53,9 +53,15 @@
             </button>
             <button
               class="btn btn-sm btn-logs"
-              @click="openLogsForProvider(provider)"
+              @click="openPodPicker(provider, 'logs')"
             >
               {{ t('clusterstacks.capiProviders.logs.viewLogs') }}
+            </button>
+            <button
+              class="btn btn-sm btn-restart"
+              @click="openPodPicker(provider, 'restart')"
+            >
+              {{ t('clusterstacks.capiProviders.logs.restartProvider') }}
             </button>
             <button
               class="btn btn-sm btn-delete"
@@ -75,26 +81,30 @@
       @cancel="cancelDelete"
     />
 
-    <!-- Logs dialog -->
+    <!-- Pod picker dialog (shared for logs and restart) -->
     <transition name="dialog-fade">
-      <div v-if="logsDialog.show" class="logs-overlay" @mousedown.self="closeLogsDialog">
+      <div v-if="podPickerDialog.show" class="logs-overlay" @mousedown.self="closePodPicker">
         <div class="logs-dialog">
           <div class="logs-header">
             <span class="logs-title">
-              {{ t('clusterstacks.capiProviders.logs.title') }}
-              <span v-if="logsDialog.provider" class="logs-namespace">
-                ({{ logsDialog.provider.namespace }})
+              {{
+                podPickerDialog.mode === 'restart'
+                  ? t('clusterstacks.capiProviders.logs.restartProvider')
+                  : t('clusterstacks.capiProviders.logs.title')
+              }}
+              <span v-if="podPickerDialog.provider" class="logs-namespace">
+                ({{ podPickerDialog.provider.namespace }})
               </span>
             </span>
-            <button class="btn-close" @click="closeLogsDialog">
+            <button class="btn-close" @click="closePodPicker">
               &times;
             </button>
           </div>
           <div class="logs-body">
-            <div v-if="logsDialog.loading" class="no-data">
+            <div v-if="podPickerDialog.loading" class="no-data">
               {{ t('clusterstacks.common.loading') }}
             </div>
-            <div v-else-if="!logsDialog.pods.length" class="no-data">
+            <div v-else-if="!podPickerDialog.pods.length" class="no-data">
               {{ t('clusterstacks.capiProviders.logs.noPods') }}
             </div>
             <table v-else class="pods-table">
@@ -108,7 +118,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="pod in logsDialog.pods" :key="pod.metadata.uid">
+                <tr v-for="pod in podPickerDialog.pods" :key="pod.metadata.uid">
                   <td class="pod-name">{{ pod.metadata.name }}</td>
                   <td>
                     <span class="phase-badge" :class="phaseClass(pod)">
@@ -118,8 +128,19 @@
                   <td>{{ podReady(pod) }}</td>
                   <td>{{ podRestarts(pod) }}</td>
                   <td>
-                    <button class="btn btn-sm role-secondary" @click="openPodLogs(pod)">
+                    <button
+                      v-if="podPickerDialog.mode === 'logs'"
+                      class="btn btn-sm role-secondary"
+                      @click="openPodLogs(pod)"
+                    >
                       {{ t('clusterstacks.cso.pods.viewLogs') }}
+                    </button>
+                    <button
+                      v-else
+                      class="btn btn-sm btn-restart-pod"
+                      @click="restartPod(pod)"
+                    >
+                      {{ t('clusterstacks.capiProviders.logs.restartPod') }}
                     </button>
                   </td>
                 </tr>
@@ -147,8 +168,9 @@ export default {
       providers:        [],
       showDeleteDialog: false,
       pendingDelete:    null,
-      logsDialog:       {
+      podPickerDialog:  {
         show:     false,
+        mode:     'logs',
         provider: null,
         pods:     [],
         loading:  false,
@@ -201,12 +223,13 @@ export default {
       });
     },
 
-    async openLogsForProvider(provider) {
-      this.logsDialog = {
-        show:     true,
+    async openPodPicker(provider, mode) {
+      this.podPickerDialog = {
+        show:    true,
+        mode,
         provider,
-        pods:     [],
-        loading:  true,
+        pods:    [],
+        loading: true,
       };
 
       try {
@@ -215,16 +238,16 @@ export default {
           url:    `/api/v1/namespaces/${ provider.namespace }/pods`,
         });
 
-        this.logsDialog.pods    = response?.items || [];
-        this.logsDialog.loading = false;
+        this.podPickerDialog.pods    = response?.items || [];
+        this.podPickerDialog.loading = false;
       } catch {
-        this.logsDialog.pods    = [];
-        this.logsDialog.loading = false;
+        this.podPickerDialog.pods    = [];
+        this.podPickerDialog.loading = false;
       }
     },
 
-    closeLogsDialog() {
-      this.logsDialog.show = false;
+    closePodPicker() {
+      this.podPickerDialog.show = false;
     },
 
     openPodLogs(pod) {
@@ -250,6 +273,26 @@ export default {
           initialContainer: containerName,
         },
       });
+
+      // Close the pod picker dialog after opening logs
+      this.closePodPicker();
+    },
+
+    async restartPod(pod) {
+      const ns   = pod.metadata.namespace;
+      const name = pod.metadata.name;
+
+      try {
+        // Deleting the pod causes Kubernetes to automatically recreate it via the parent controller (Deployment/ReplicaSet)
+        await this.$store.dispatch('management/request', {
+          method: 'DELETE',
+          url:    `/api/v1/namespaces/${ ns }/pods/${ name }`,
+        });
+      } catch (e) {
+        console.error(e); // eslint-disable-line no-console
+      }
+
+      this.closePodPicker();
     },
 
     phaseClass(pod) {
@@ -409,6 +452,27 @@ export default {
   border-color: var(--info, #2563eb);
   color: #fff;
   margin-right: 6px;
+
+  &:not(:disabled):hover {
+    opacity: 0.85;
+  }
+}
+
+.btn-restart {
+  background-color: var(--warning, #d97706);
+  border-color: var(--warning, #d97706);
+  color: #fff;
+  margin-right: 6px;
+
+  &:not(:disabled):hover {
+    opacity: 0.85;
+  }
+}
+
+.btn-restart-pod {
+  background-color: var(--warning, #d97706);
+  border-color: var(--warning, #d97706);
+  color: #fff;
 
   &:not(:disabled):hover {
     opacity: 0.85;
