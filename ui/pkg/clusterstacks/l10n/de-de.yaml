@@ -296,6 +296,8 @@ clusterstacks:
       name: Provider-Name
       namePlaceholder: "z.B. aws, azure, openstack"
       nameEditHint: Der Provider-Name kann nach der Erstellung nicht mehr geändert werden.
+      resourceName: Ressourcenname
+      resourceNameHint: Automatisch generierter Name als metadata.name und Namespace (Typ-Name).
       type: Provider-Typ
       typePlaceholder: Typ auswählen...
       version: Version

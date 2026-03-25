@@ -71,6 +71,17 @@
         </div>
       </div>
 
+      <!-- Resource Name (auto-computed, shown when creating) -->
+      <div v-if="!isEdit && resourceName" class="form-row">
+        <label class="form-label">
+          {{ t('clusterstacks.capiProviders.form.resourceName') }}
+        </label>
+        <div class="form-input form-input-disabled">
+          {{ resourceName }}
+          <p class="form-hint">{{ t('clusterstacks.capiProviders.form.resourceNameHint') }}</p>
+        </div>
+      </div>
+
       <!-- Version -->
       <div class="form-row">
         <label class="form-label" for="capi-version">
@@ -259,6 +270,16 @@ export default {
       return !!this.form.name.trim() && !!this.form.type;
     },
 
+    // Auto-generated metadata.name used when creating a new CAPIProvider.
+    // Combines the lowercased type with the provider name, e.g. "infrastructure-aws".
+    resourceName() {
+      if (!this.form.type || !this.form.name.trim()) {
+        return '';
+      }
+
+      return `${ this.form.type.toLowerCase() }-${ this.form.name.trim() }`;
+    },
+
     validVariables() {
       return this.form.variables.filter((v) => v.name.trim());
     },
@@ -357,20 +378,22 @@ export default {
     },
 
     async checkNameExists() {
-      if (!this.form.name || this.isEdit) {
+      if (!this.form.name || !this.form.type || this.isEdit) {
         this.nameExists = false;
 
         return;
       }
       try {
-        const name     = this.form.name;
-        const response = await this.$store.dispatch('management/request', {
+        const providerName = this.form.name;
+        const providerType = this.form.type;
+        const response     = await this.$store.dispatch('management/request', {
           method: 'GET',
           url:    '/apis/turtles-capi.cattle.io/v1alpha1/capiproviders',
         });
 
         this.nameExists = (response?.items || []).some(
-          (item) => item.metadata?.name === name
+          (item) => item.spec?.type?.toLowerCase() === providerType.toLowerCase() &&
+            item.spec?.name === providerName
         );
       } catch {
         this.nameExists = false;
@@ -395,15 +418,18 @@ export default {
 
       try {
         const name      = this.form.name.trim();
+        const resName   = this.isEdit
+          ? (this.existing?.metadata?.name || this.resourceName)
+          : this.resourceName;
         const namespace = this.isEdit
-          ? (this.existing?.metadata?.namespace || name)
-          : name;
+          ? (this.existing?.metadata?.namespace || resName)
+          : resName;
 
         const body = {
           apiVersion: 'turtles-capi.cattle.io/v1alpha1',
           kind:       'CAPIProvider',
           metadata:   {
-            name,
+            name:      resName,
             namespace,
           },
           spec: {
@@ -418,7 +444,7 @@ export default {
         if (this.isEdit) {
           await this.$store.dispatch('management/request', {
             method: 'PUT',
-            url:    `/apis/turtles-capi.cattle.io/v1alpha1/namespaces/${ namespace }/capiproviders/${ name }`,
+            url:    `/apis/turtles-capi.cattle.io/v1alpha1/namespaces/${ namespace }/capiproviders/${ resName }`,
             data:   {
               ...this.existing,
               spec: body.spec,
