@@ -728,11 +728,32 @@ export default {
     // ─── Logs ─────────────────────────────────────────────────────────
 
     openLogs(pod) {
-      const cluster = this.$route.params.cluster || 'local';
       const ns = pod.metadata.namespace || CSO_NAMESPACE;
       const name = pod.metadata.name;
+      const containerName = pod.spec?.containers?.[0]?.name;
 
-      this.$router.push(`/c/${ cluster }/explorer/pod/${ ns }/${ name }`);
+      // Build a minimal pod proxy that ContainerLogs expects.
+      // links.view is the Kubernetes API URL proxied through Rancher's management cluster.
+      const podProxy = {
+        ...pod,
+        id:                   `${ ns }/${ name }`,
+        nameDisplay:          name,
+        defaultContainerName: containerName,
+        links:                { view: `/k8s/clusters/local/api/v1/namespaces/${ ns }/pods/${ name }` },
+      };
+
+      // Open the Rancher window-manager log panel instead of navigating away.
+      // This mirrors the approach in shell/models/pod.js from rancher/dashboard.
+      this.$store.dispatch('wm/open', {
+        id:        `${ ns }/${ name }-logs`,
+        label:     name,
+        icon:      'file',
+        component: 'ContainerLogs',
+        attrs:     {
+          pod:              podProxy,
+          initialContainer: containerName,
+        },
+      });
     },
 
     // ─── Pod helpers ──────────────────────────────────────────────────
