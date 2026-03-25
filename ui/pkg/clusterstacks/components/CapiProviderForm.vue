@@ -171,12 +171,15 @@ const FALLBACK_PROVIDERS = {
 };
 
 function parseProvidersFromGo(content) {
+  // Use \n) as the block terminator because Go const block closing parens
+  // are always on their own line at column 0. Using just \) would stop
+  // prematurely at any ) inside inline comments (e.g. "(also owned by Rancher)").
   const sectionMap = {
-    Core:           /\/\/ core providers\.[\s\S]*?const \(([\s\S]*?)\)/i,
-    Infrastructure: /\/\/ Infra providers\.[\s\S]*?const \(([\s\S]*?)\)/i,
-    Bootstrap:      /\/\/ Bootstrap providers\.[\s\S]*?const \(([\s\S]*?)\)/i,
-    ControlPlane:   /\/\/ ControlPlane providers\.[\s\S]*?const \(([\s\S]*?)\)/i,
-    Addon:          /\/\/ Add-on providers\.[\s\S]*?const \(([\s\S]*?)\)/i,
+    Core:           /\/\/ core providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
+    Infrastructure: /\/\/ Infra providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
+    Bootstrap:      /\/\/ Bootstrap providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
+    ControlPlane:   /\/\/ ControlPlane providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
+    Addon:          /\/\/ Add-on providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
   };
 
   const result = {};
@@ -360,13 +363,15 @@ export default {
         return;
       }
       try {
-        const name = this.form.name;
-
-        await this.$store.dispatch('management/request', {
+        const name     = this.form.name;
+        const response = await this.$store.dispatch('management/request', {
           method: 'GET',
-          url:    `/apis/turtles-capi.cattle.io/v1alpha1/namespaces/${ name }/capiproviders/${ name }`,
+          url:    '/apis/turtles-capi.cattle.io/v1alpha1/capiproviders',
         });
-        this.nameExists = true;
+
+        this.nameExists = (response?.items || []).some(
+          (item) => item.metadata?.name === name
+        );
       } catch {
         this.nameExists = false;
       }
