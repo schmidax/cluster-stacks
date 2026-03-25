@@ -158,25 +158,10 @@ export default {
   emits: ['save', 'cancel'],
 
   data() {
-    const ex = this.existing;
-    const exFeatures = ex?.spec?.features || {};
-    const exVars = ex?.spec?.variables || [];
-
     return {
       saving: false,
       error:  '',
-      form:   {
-        name:      ex?.metadata?.name || ex?.spec?.name || '',
-        type:      ex?.spec?.type || '',
-        version:   ex?.spec?.version || '',
-        namespace: ex?.metadata?.namespace || DEFAULT_NAMESPACE,
-        features:  {
-          clusterResourceSet: exFeatures.clusterResourceSet !== undefined ? exFeatures.clusterResourceSet : true,
-          clusterTopology:    exFeatures.clusterTopology !== undefined ? exFeatures.clusterTopology : true,
-          machinePool:        exFeatures.machinePool !== undefined ? exFeatures.machinePool : true,
-        },
-        variables: exVars.map((v) => ({ name: v.name || '', value: v.value || '' })),
-      },
+      form:   this.buildForm(this.existing),
       providerTypes: [
         { value: 'Infrastructure',  label: 'Infrastructure' },
         { value: 'ControlPlane',    label: 'ControlPlane' },
@@ -185,6 +170,12 @@ export default {
         { value: 'Addon',           label: 'Addon' },
       ],
     };
+  },
+
+  watch: {
+    existing(val) {
+      this.form = this.buildForm(val);
+    },
   },
 
   computed: {
@@ -202,6 +193,24 @@ export default {
   },
 
   methods: {
+    buildForm(ex) {
+      const exFeatures = ex?.spec?.features || {};
+      const exVars     = ex?.spec?.variables || [];
+
+      return {
+        name:      ex?.metadata?.name || ex?.spec?.name || '',
+        type:      ex?.spec?.type || '',
+        version:   ex?.spec?.version || '',
+        namespace: ex?.metadata?.namespace || DEFAULT_NAMESPACE,
+        features:  {
+          clusterResourceSet: exFeatures.clusterResourceSet !== undefined ? exFeatures.clusterResourceSet : true,
+          clusterTopology:    exFeatures.clusterTopology !== undefined ? exFeatures.clusterTopology : true,
+          machinePool:        exFeatures.machinePool !== undefined ? exFeatures.machinePool : true,
+        },
+        variables: exVars.map((v) => ({ name: v.name || '', value: v.value || '' })),
+      };
+    },
+
     addVariable() {
       this.form.variables.push({ name: '', value: '' });
     },

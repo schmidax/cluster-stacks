@@ -136,20 +136,17 @@ export function init($plugin: IPlugin, store: any) {
     NAV.DASHBOARD,
     NAV.CLUSTERS,
   ]);
-  // ClusterStacks group: Stacks + CSO Management
+  // ClusterStacks group: Stacks + CSO Management + CAPI Providers
   basicType([
     NAV.STACKS,
     NAV.CSO_MANAGEMENT,
+    NAV.CAPI_PROVIDERS,
   ], 'ClusterStacks');
   // OpenStack group
   basicType([
     NAV.OPENSTACK,
     NAV.OPENSTACK_RESOURCES,
   ], 'OpenStack');
-  // CAPI Provider group
-  basicType([
-    NAV.CAPI_PROVIDERS,
-  ], 'CAPI Provider');
 
   // Weight the nav types so they appear in the right order
   weightType(NAV.DASHBOARD,           100, true);
