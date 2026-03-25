@@ -732,7 +732,7 @@ export default {
       const ns = pod.metadata.namespace || CSO_NAMESPACE;
       const name = pod.metadata.name;
 
-      this.$router.push(`/c/${ cluster }/explorer/pod/${ ns }/${ name }/logs`);
+      this.$router.push(`/c/${ cluster }/explorer/pod/${ ns }/${ name }`);
     },
 
     // ─── Pod helpers ──────────────────────────────────────────────────
