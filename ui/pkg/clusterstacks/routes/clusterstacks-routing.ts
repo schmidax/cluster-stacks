@@ -67,6 +67,22 @@ const routes: RouteConfig[] = [
     component: () => import(/* webpackChunkName: "clusterstacks-openstack-resources" */ '../pages/openstack-projects/resources.vue'),
     meta:      { product: PRODUCT_NAME },
   },
+
+  // CAPI Providers list
+  {
+    name:      ROUTES.CAPI_PROVIDERS,
+    path:      `${CLUSTER_PREFIX}/capi-providers`,
+    component: () => import(/* webpackChunkName: "clusterstacks-capi-providers" */ '../pages/capi-providers/index.vue'),
+    meta:      { product: PRODUCT_NAME },
+  },
+
+  // CAPI Provider create / edit
+  {
+    name:      ROUTES.CAPI_PROVIDERS_CREATE,
+    path:      `${CLUSTER_PREFIX}/capi-providers/create`,
+    component: () => import(/* webpackChunkName: "clusterstacks-capi-providers-create" */ '../pages/capi-providers/create.vue'),
+    meta:      { product: PRODUCT_NAME },
+  },
 ];
 
 export default routes;

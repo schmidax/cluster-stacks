@@ -8,6 +8,7 @@ clusterstacks:
     openstackGroup: OpenStack
     openstackCredentials: Anmeldedaten
     openstackResources: Ressourcen
+    capiProviders: CAPI Provider
 
   dashboard:
     title: ClusterStacks Dashboard
@@ -276,3 +277,32 @@ clusterstacks:
     no: "Nein"
     enabled: Aktiviert
     disabled: Deaktiviert
+
+  capiProviders:
+    title: CAPI Provider
+    createTitle: CAPI Provider installieren
+    editTitle: CAPI Provider bearbeiten
+    createBtn: Provider installieren
+    noData: Keine CAPI Provider installiert.
+    table:
+      name: Name
+      type: Typ
+      version: Version
+      namespace: Namespace
+      status: Status
+      ready: Bereit
+      notReady: Nicht bereit
+    form:
+      name: Provider-Name
+      namePlaceholder: "z.B. aws, azure, openstack"
+      nameEditHint: Der Provider-Name kann nach der Erstellung nicht mehr geändert werden.
+      type: Provider-Typ
+      typePlaceholder: Typ auswählen...
+      version: Version
+      versionPlaceholder: "z.B. v2.6.1 (optional)"
+      namespace: Namespace
+      namespacePlaceholder: rancher-turtles-system
+      namespaceHint: Namespace, in dem der Provider installiert wird. Standard ist rancher-turtles-system.
+      save: Provider installieren
+    errors:
+      save: CAPI Provider konnte nicht gespeichert werden.

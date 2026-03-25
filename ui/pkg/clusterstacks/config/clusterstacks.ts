@@ -5,14 +5,16 @@ export const BLANK_CLUSTER = '_';
 
 // Route name constants
 export const ROUTES = {
-  DASHBOARD:            'clusterstacks-dashboard',
-  CLUSTERS:             'clusterstacks-clusters',
-  CLUSTERS_CREATE:      'clusterstacks-clusters-create',
-  STACKS:               'clusterstacks-stacks',
-  CSO_MANAGEMENT:       'clusterstacks-cso-management',
-  OPENSTACK:            'clusterstacks-openstack',
-  OPENSTACK_CREATE:     'clusterstacks-openstack-create',
-  OPENSTACK_RESOURCES:  'clusterstacks-openstack-resources',
+  DASHBOARD:              'clusterstacks-dashboard',
+  CLUSTERS:               'clusterstacks-clusters',
+  CLUSTERS_CREATE:        'clusterstacks-clusters-create',
+  STACKS:                 'clusterstacks-stacks',
+  CSO_MANAGEMENT:         'clusterstacks-cso-management',
+  OPENSTACK:              'clusterstacks-openstack',
+  OPENSTACK_CREATE:       'clusterstacks-openstack-create',
+  OPENSTACK_RESOURCES:    'clusterstacks-openstack-resources',
+  CAPI_PROVIDERS:         'clusterstacks-capi-providers',
+  CAPI_PROVIDERS_CREATE:  'clusterstacks-capi-providers-create',
 };
 
 // Navigation type IDs
@@ -23,6 +25,7 @@ export const NAV = {
   CSO_MANAGEMENT:       'clusterstacks-cso-management',
   OPENSTACK:            'clusterstacks-openstack',
   OPENSTACK_RESOURCES:  'clusterstacks-openstack-resources',
+  CAPI_PROVIDERS:       'clusterstacks-capi-providers',
 };
 
 export function init($plugin: IPlugin, store: any) {
@@ -113,6 +116,21 @@ export function init($plugin: IPlugin, store: any) {
     weight:     70,
   });
 
+  // CAPI Providers menu item
+  virtualType({
+    name:       NAV.CAPI_PROVIDERS,
+    labelKey:   'clusterstacks.nav.capiProviders',
+    route:      { name: ROUTES.CAPI_PROVIDERS, params: { cluster: BLANK_CLUSTER } },
+    icon:       'cluster-management',
+    weight:     60,
+  });
+
+  configureType(NAV.CAPI_PROVIDERS, {
+    isCreatable: true,
+    isEditable:  true,
+    isRemovable: true,
+  });
+
   // Add all nav items to the sidebar
   basicType([
     NAV.DASHBOARD,
@@ -128,6 +146,10 @@ export function init($plugin: IPlugin, store: any) {
     NAV.OPENSTACK,
     NAV.OPENSTACK_RESOURCES,
   ], 'OpenStack');
+  // CAPI Provider group
+  basicType([
+    NAV.CAPI_PROVIDERS,
+  ], 'CAPI Provider');
 
   // Weight the nav types so they appear in the right order
   weightType(NAV.DASHBOARD,           100, true);
@@ -136,4 +158,5 @@ export function init($plugin: IPlugin, store: any) {
   weightType(NAV.CSO_MANAGEMENT,       80, true);
   weightType(NAV.OPENSTACK,            71, true);
   weightType(NAV.OPENSTACK_RESOURCES,  70, true);
+  weightType(NAV.CAPI_PROVIDERS,       60, true);
 }
