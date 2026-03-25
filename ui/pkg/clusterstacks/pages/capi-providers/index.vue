@@ -46,6 +46,12 @@
           </td>
           <td class="cell-actions">
             <button
+              class="btn btn-sm btn-edit"
+              @click="editProvider(provider)"
+            >
+              {{ t('clusterstacks.common.edit') }}
+            </button>
+            <button
               class="btn btn-sm btn-delete"
               @click="requestDelete(provider)"
             >
@@ -119,6 +125,13 @@ export default {
 
     createProvider() {
       this.$router.push({ name: ROUTES.CAPI_PROVIDERS_CREATE });
+    },
+
+    editProvider(provider) {
+      this.$router.push({
+        name:  ROUTES.CAPI_PROVIDERS_CREATE,
+        query: { namespace: provider.namespace, name: provider.name },
+      });
     },
 
     requestDelete(provider) {
@@ -244,6 +257,17 @@ export default {
 
   &.status-ready   { background: #d1fae5; color: #065f46; }
   &.status-pending { background: #fef3c7; color: #92400e; }
+}
+
+.btn-edit {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  margin-right: 6px;
+
+  &:not(:disabled):hover {
+    opacity: 0.85;
+  }
 }
 
 .btn-delete {

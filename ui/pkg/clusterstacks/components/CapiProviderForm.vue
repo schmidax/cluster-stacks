@@ -70,6 +70,60 @@
           {{ t('clusterstacks.capiProviders.form.namespaceHint') }}
         </p>
       </div>
+
+      <div class="form-row">
+        <label class="form-label">
+          {{ t('clusterstacks.capiProviders.form.features') }}
+        </label>
+        <div class="features-group">
+          <label class="checkbox-label">
+            <input v-model="form.features.clusterResourceSet" type="checkbox" />
+            clusterResourceSet
+          </label>
+          <label class="checkbox-label">
+            <input v-model="form.features.clusterTopology" type="checkbox" />
+            clusterTopology
+          </label>
+          <label class="checkbox-label">
+            <input v-model="form.features.machinePool" type="checkbox" />
+            machinePool
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">
+          {{ t('clusterstacks.capiProviders.form.variables') }}
+          <span class="form-optional">{{ t('clusterstacks.capiProviders.form.optional') }}</span>
+        </label>
+        <div class="variables-list">
+          <div
+            v-for="(variable, idx) in form.variables"
+            :key="idx"
+            class="variable-row"
+          >
+            <input
+              v-model="variable.name"
+              type="text"
+              class="form-input variable-input"
+              :placeholder="t('clusterstacks.capiProviders.form.variableNamePlaceholder')"
+            />
+            <span class="variable-sep">=</span>
+            <input
+              v-model="variable.value"
+              type="text"
+              class="form-input variable-input"
+              :placeholder="t('clusterstacks.capiProviders.form.variableValuePlaceholder')"
+            />
+            <button class="btn btn-sm role-secondary btn-remove-var" @click="removeVariable(idx)">
+              &times;
+            </button>
+          </div>
+        </div>
+        <button class="btn role-secondary btn-add-var" @click="addVariable">
+          + {{ t('clusterstacks.capiProviders.form.addVariable') }}
+        </button>
+      </div>
     </div>
 
     <div v-if="error" class="form-error">
@@ -105,6 +159,8 @@ export default {
 
   data() {
     const ex = this.existing;
+    const exFeatures = ex?.spec?.features || {};
+    const exVars = ex?.spec?.variables || [];
 
     return {
       saving: false,
@@ -114,6 +170,12 @@ export default {
         type:      ex?.spec?.type || '',
         version:   ex?.spec?.version || '',
         namespace: ex?.metadata?.namespace || DEFAULT_NAMESPACE,
+        features:  {
+          clusterResourceSet: exFeatures.clusterResourceSet !== undefined ? exFeatures.clusterResourceSet : true,
+          clusterTopology:    exFeatures.clusterTopology !== undefined ? exFeatures.clusterTopology : true,
+          machinePool:        exFeatures.machinePool !== undefined ? exFeatures.machinePool : true,
+        },
+        variables: exVars.map((v) => ({ name: v.name || '', value: v.value || '' })),
       },
       providerTypes: [
         { value: 'Infrastructure',  label: 'Infrastructure' },
@@ -133,9 +195,21 @@ export default {
     isValid() {
       return !!this.form.name.trim() && !!this.form.type;
     },
+
+    validVariables() {
+      return this.form.variables.filter((v) => v.name.trim());
+    },
   },
 
   methods: {
+    addVariable() {
+      this.form.variables.push({ name: '', value: '' });
+    },
+
+    removeVariable(idx) {
+      this.form.variables.splice(idx, 1);
+    },
+
     async save() {
       if (!this.isValid) {
         return;
@@ -156,9 +230,11 @@ export default {
             namespace,
           },
           spec: {
-            name:    name,
-            type:    this.form.type,
+            name:     name,
+            type:     this.form.type,
             ...(this.form.version.trim() ? { version: this.form.version.trim() } : {}),
+            features: { ...this.form.features },
+            ...(this.validVariables.length ? { variables: this.validVariables } : {}),
           },
         };
 
@@ -260,6 +336,68 @@ export default {
   color: var(--error);
   font-size: 0.9em;
   margin-bottom: 16px;
+}
+
+.form-optional {
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 6px;
+  font-size: 0.85em;
+}
+
+.features-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  font-size: 0.9em;
+  cursor: pointer;
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+}
+
+.variables-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.variable-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.variable-input {
+  flex: 1;
+}
+
+.variable-sep {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.btn-remove-var {
+  padding: 4px 10px;
+  font-size: 1.1em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.btn-add-var {
+  align-self: flex-start;
+  font-size: 0.85em;
 }
 
 .form-actions {

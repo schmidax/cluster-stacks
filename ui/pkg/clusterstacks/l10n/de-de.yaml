@@ -304,5 +304,14 @@ clusterstacks:
       namespacePlaceholder: rancher-turtles-system
       namespaceHint: Namespace, in dem der Provider installiert wird. Standard ist rancher-turtles-system.
       save: Provider installieren
+    features: Features
+    featureClusterResourceSet: clusterResourceSet
+    featureClusterTopology: clusterTopology
+    featureMachinePool: machinePool
+    variables: Extra-Variablen
+    optional: (optional)
+    addVariable: Variable hinzufügen
+    variableNamePlaceholder: Variablenname
+    variableValuePlaceholder: Wert
     errors:
       save: CAPI Provider konnte nicht gespeichert werden.
