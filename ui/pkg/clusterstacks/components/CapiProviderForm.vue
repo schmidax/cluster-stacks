@@ -306,7 +306,7 @@ export default {
         return;
       }
       const exFeatures = ex?.spec?.features || {};
-      const exVars     = ex?.spec?.variables || [];
+      const exVars     = Array.isArray(ex?.spec?.variables) ? ex.spec.variables : [];
 
       this.form = {
         name:     ex?.metadata?.name || ex?.spec?.name || '',
@@ -451,6 +451,25 @@ export default {
             },
           });
         } else {
+          // Ensure the target namespace exists before creating the resource.
+          try {
+            await this.$store.dispatch('management/request', {
+              method: 'GET',
+              url:    `/api/v1/namespaces/${ namespace }`,
+            });
+          } catch {
+            // Namespace does not exist – create it.
+            await this.$store.dispatch('management/request', {
+              method: 'POST',
+              url:    '/api/v1/namespaces',
+              data:   {
+                apiVersion: 'v1',
+                kind:       'Namespace',
+                metadata:   { name: namespace },
+              },
+            });
+          }
+
           await this.$store.dispatch('management/request', {
             method: 'POST',
             url:    `/apis/turtles-capi.cattle.io/v1alpha1/namespaces/${ namespace }/capiproviders`,
