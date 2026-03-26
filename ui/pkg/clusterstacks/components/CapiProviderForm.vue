@@ -7,11 +7,14 @@
           {{ t('clusterstacks.capiProviders.form.type') }}
           <span class="required">*</span>
         </label>
+        <div v-if="isEdit" class="form-input form-input-disabled">
+          {{ form.type }}
+        </div>
         <select
+          v-else
           id="capi-type"
           v-model="form.type"
           class="form-select"
-          :disabled="isEdit"
           @change="onTypeChange"
         >
           <option value="" disabled>
