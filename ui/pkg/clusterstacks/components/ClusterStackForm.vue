@@ -7,13 +7,34 @@
           {{ t('clusterstacks.stackForm.provider') }}
           <span class="required">*</span>
         </label>
-        <input
-          id="cs-provider"
-          v-model="form.provider"
-          type="text"
-          class="form-input"
-          :placeholder="t('clusterstacks.stackForm.providerPlaceholder')"
-        />
+        <div v-if="isEdit" class="form-input form-input-disabled">
+          {{ form.provider }}
+        </div>
+        <div v-else>
+          <div v-if="loadingProviders" class="form-hint-text">
+            <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
+          </div>
+          <select
+            v-else
+            id="cs-provider"
+            v-model="form.provider"
+            class="form-select"
+          >
+            <option value="" disabled>
+              {{ t('clusterstacks.stackForm.providerSelect') }}
+            </option>
+            <option
+              v-for="p in infraProviders"
+              :key="p.name"
+              :value="p.name"
+            >
+              {{ p.name }}{{ p.namespace ? ` (${p.namespace})` : '' }}
+            </option>
+          </select>
+          <span v-if="!loadingProviders && !infraProviders.length" class="form-hint-text">
+            {{ t('clusterstacks.stackForm.noInfraProviders') }}
+          </span>
+        </div>
       </div>
 
       <!-- Name -->
@@ -22,13 +43,33 @@
           {{ t('clusterstacks.stackForm.name') }}
           <span class="required">*</span>
         </label>
-        <input
-          id="cs-name"
-          v-model="form.name"
-          type="text"
-          class="form-input"
-          :placeholder="t('clusterstacks.stackForm.namePlaceholder')"
-        />
+        <div v-if="isEdit" class="form-input form-input-disabled">
+          {{ form.name }}
+        </div>
+        <div v-else>
+          <select
+            id="cs-name"
+            v-model="nameSelection"
+            class="form-select"
+            @change="onNameSelectionChange"
+          >
+            <option value="" disabled>
+              {{ t('clusterstacks.stackForm.nameSelect') }}
+            </option>
+            <option value="rke2">rke2</option>
+            <option value="scs2">scs2</option>
+            <option value="__custom__">
+              {{ t('clusterstacks.stackForm.nameCustom') }}
+            </option>
+          </select>
+          <input
+            v-if="nameSelection === '__custom__'"
+            v-model="form.name"
+            type="text"
+            class="form-input mt-5"
+            :placeholder="t('clusterstacks.stackForm.namePlaceholder')"
+          />
+        </div>
       </div>
 
       <!-- kubernetesVersion -->
@@ -43,6 +84,7 @@
           type="text"
           class="form-input"
           :placeholder="t('clusterstacks.stackForm.kubernetesVersionPlaceholder')"
+          :disabled="isEdit"
         />
       </div>
 
@@ -123,7 +165,7 @@
       </button>
       <button class="btn role-primary" :disabled="!isValid || saving" @click="save">
         <span v-if="saving"><i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.saving') }}</span>
-        <span v-else>{{ t('clusterstacks.stackForm.save') }}</span>
+        <span v-else>{{ isEdit ? t('clusterstacks.stackForm.update') : t('clusterstacks.stackForm.save') }}</span>
       </button>
     </div>
   </div>
@@ -138,11 +180,21 @@ export default {
 
   emits: ['save', 'cancel'],
 
+  props: {
+    existingStack: {
+      type:    Object,
+      default: null,
+    },
+  },
+
   data() {
     return {
-      saving: false,
-      error:  null,
-      form:   {
+      saving:           false,
+      error:            null,
+      infraProviders:   [],
+      loadingProviders: false,
+      nameSelection:    '',
+      form:             {
         provider:          '',
         name:              '',
         kubernetesVersion: '',
@@ -154,13 +206,25 @@ export default {
     };
   },
 
+  async mounted() {
+    await this.loadInfraProviders();
+  },
+
   computed: {
+    isEdit() {
+      return !!this.existingStack;
+    },
+
     resourceName() {
-      if (!this.form.provider.trim() || !this.form.kubernetesVersion.trim()) {
+      const provider = this.form.provider.trim();
+      const name     = this.form.name.trim();
+      const k8s      = this.form.kubernetesVersion.trim().replace(/\./g, '-');
+
+      if (!provider || !name || !k8s) {
         return '';
       }
 
-      return `${ this.form.provider.trim() }-${ this.form.kubernetesVersion.trim().replace(/\./g, '-') }`;
+      return `${ provider }-${ name }-${ k8s }`;
     },
 
     validVersions() {
@@ -186,7 +250,66 @@ export default {
     },
   },
 
+  watch: {
+    existingStack: {
+      immediate: true,
+      handler(stack) {
+        if (stack) {
+          const spec = stack.spec || {};
+
+          this.form.provider          = spec.provider || '';
+          this.form.name              = spec.name || '';
+          // Pre-select dropdown if name matches a known option
+          if (this.form.name === 'rke2' || this.form.name === 'scs2') {
+            this.nameSelection = this.form.name;
+          } else if (this.form.name) {
+            this.nameSelection = '__custom__';
+          }
+          this.form.kubernetesVersion = spec.kubernetesVersion || '';
+          this.form.channel           = spec.channel || 'stable';
+          this.form.autoSubscribe     = !!spec.autoSubscribe;
+          this.form.noProvider        = !!spec.noProvider;
+          // K8s CRD may store versions as 'version' or 'versions'
+          const versionList = Array.isArray(spec.versions) ? spec.versions
+            : Array.isArray(spec.version) ? spec.version
+              : [];
+
+          this.form.versions = versionList.length ? [...versionList] : [''];
+        }
+      },
+    },
+  },
+
   methods: {
+    onNameSelectionChange() {
+      if (this.nameSelection !== '__custom__') {
+        this.form.name = this.nameSelection;
+      } else {
+        this.form.name = '';
+      }
+    },
+
+    async loadInfraProviders() {
+      this.loadingProviders = true;
+      try {
+        const response = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    '/apis/turtles-capi.cattle.io/v1alpha1/capiproviders',
+        });
+
+        this.infraProviders = (response?.items || []).filter(
+          (item) => (item.spec?.type || '').toLowerCase() === 'infrastructure'
+        ).map((item) => ({
+          name:      item.spec?.name || item.metadata?.name || '',
+          namespace: item.metadata?.namespace || '',
+        }));
+      } catch {
+        this.infraProviders = [];
+      } finally {
+        this.loadingProviders = false;
+      }
+    },
+
     isValidVersion(v) {
       return VERSION_RE.test(v.trim());
     },
@@ -217,22 +340,47 @@ export default {
           spec.version = this.validVersions.map((v) => v.trim());
         }
 
-        await this.$store.dispatch('management/request', {
-          method: 'POST',
-          url:    `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ DEFAULT_NAMESPACE }/clusterstacks`,
-          data:   {
-            apiVersion: 'clusterstack.x-k8s.io/v1alpha1',
-            kind:       'ClusterStack',
-            metadata:   {
-              name:      this.resourceName,
-              namespace: DEFAULT_NAMESPACE,
+        if (this.isEdit) {
+          // Update existing ClusterStack via PUT
+          const ns   = this.existingStack.metadata?.namespace || DEFAULT_NAMESPACE;
+          const name = this.existingStack.metadata?.name;
+
+          await this.$store.dispatch('management/request', {
+            method: 'PUT',
+            url:    `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ ns }/clusterstacks/${ name }`,
+            data:   {
+              apiVersion:      'clusterstack.x-k8s.io/v1alpha1',
+              kind:            'ClusterStack',
+              metadata:        {
+                name,
+                namespace:       ns,
+                resourceVersion: this.existingStack.metadata?.resourceVersion,
+              },
+              spec,
             },
-            spec,
-          },
-        });
+          });
+        } else {
+          // Create new ClusterStack via POST
+          await this.$store.dispatch('management/request', {
+            method: 'POST',
+            url:    `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ DEFAULT_NAMESPACE }/clusterstacks`,
+            data:   {
+              apiVersion: 'clusterstack.x-k8s.io/v1alpha1',
+              kind:       'ClusterStack',
+              metadata:   {
+                name:      this.resourceName,
+                namespace: DEFAULT_NAMESPACE,
+              },
+              spec,
+            },
+          });
+        }
+
         this.$emit('save');
       } catch (e) {
-        this.error = e?.message || this.t('clusterstacks.stackForm.errors.save');
+        this.error = e?.message || this.t(
+          this.isEdit ? 'clusterstacks.stackForm.errors.update' : 'clusterstacks.stackForm.errors.save'
+        );
       } finally {
         this.saving = false;
       }
@@ -311,6 +459,10 @@ export default {
   }
 }
 
+.mt-5 {
+  margin-top: 5px;
+}
+
 .form-info {
   font-size: 0.85em;
   color: var(--muted);
@@ -370,5 +522,15 @@ export default {
   display: flex;
   gap: 10px;
   margin-top: 24px;
+}
+
+.form-input-disabled {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--disabled-bg, #f5f5f5);
+  color: var(--muted);
+  font-size: 0.9em;
+  cursor: not-allowed;
 }
 </style>

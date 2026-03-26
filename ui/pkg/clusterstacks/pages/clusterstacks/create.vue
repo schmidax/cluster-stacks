@@ -1,10 +1,16 @@
 <template>
   <div class="clusterstack-create-page">
     <div class="page-header">
-      <h1>{{ t('clusterstacks.stackForm.createTitle') }}</h1>
+      <h1>{{ isEdit ? t('clusterstacks.stackForm.editTitle') : t('clusterstacks.stackForm.createTitle') }}</h1>
+    </div>
+
+    <div v-if="loading" class="loading-placeholder">
+      <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
     </div>
 
     <ClusterStackForm
+      v-else
+      :existing-stack="existingStack"
       @save="onSave"
       @cancel="onCancel"
     />
@@ -19,6 +25,39 @@ export default {
   name: 'ClusterStackCreate',
 
   components: { ClusterStackForm },
+
+  data() {
+    return {
+      existingStack: null,
+      loading:       false,
+    };
+  },
+
+  computed: {
+    isEdit() {
+      return !!this.$route.query?.name;
+    },
+  },
+
+  async mounted() {
+    const { namespace, name } = this.$route.query || {};
+
+    if (name) {
+      this.loading = true;
+      try {
+        const ns = namespace || 'clusterstacks';
+        const result = await this.$store.dispatch('management/request', {
+          url: `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ ns }/clusterstacks/${ name }`,
+        });
+
+        this.existingStack = result;
+      } catch (e) {
+        console.error('Failed to load ClusterStack for editing:', e); // eslint-disable-line no-console
+      } finally {
+        this.loading = false;
+      }
+    }
+  },
 
   methods: {
     onSave() {
@@ -43,5 +82,11 @@ export default {
 
 .page-header {
   margin-bottom: 24px;
+}
+
+.loading-placeholder {
+  padding: 40px;
+  text-align: center;
+  color: var(--muted);
 }
 </style>

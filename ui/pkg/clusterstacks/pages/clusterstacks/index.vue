@@ -34,7 +34,10 @@
         :stack="stack"
         :releases="releasesByStack[stack.metadata.name] || []"
         :cluster-classes="clusterClassesByStack[stack.metadata.name] || []"
+        :used-release-names="usedReleaseNames"
         @delete-release="onDeleteRelease"
+        @edit-stack="onEditStack"
+        @delete-stack="onDeleteStack"
       />
     </div>
   </div>
@@ -54,6 +57,7 @@ export default {
       stacks:               [],
       releases:             [],
       clusterClasses:       [],
+      clusters:             [],
       loading:              false,
       error:                null,
     };
@@ -62,11 +66,31 @@ export default {
   computed: {
     releasesByStack() {
       const map = {};
+
+      // Build a lookup: release-name-prefix → stack metadata.name
+      // Release naming convention: <provider>-<name>-<k8sVersion>-<version>
+      // e.g. "openstack-rke2-1-33-v3"
+      // Stack spec fields: provider, name, kubernetesVersion
+      const prefixToStackName = {};
+
+      for (const stack of this.stacks) {
+        const provider   = stack.spec?.provider || '';
+        const name       = stack.spec?.name || '';
+        const k8sVersion = (stack.spec?.kubernetesVersion || '').replace(/\./g, '-');
+
+        if (provider && name && k8sVersion) {
+          const prefix = `${ provider }-${ name }-${ k8sVersion }`;
+
+          prefixToStackName[prefix] = stack.metadata.name;
+        }
+      }
+
       for (const release of this.releases) {
-        // spec.clusterStack holds the parent ClusterStack name (e.g. "openstack-1-34").
-        // Fall back to stripping the trailing version suffix (e.g. "-v1") from metadata.name.
-        const stackName = release.spec?.clusterStack
-          || (release.metadata?.name || '').replace(/-v\d+$/, '');
+        const releaseName = release.metadata?.name || '';
+        // Strip trailing version suffix: e.g. "openstack-rke2-1-33-v3" → "openstack-rke2-1-33"
+        const releasePrefix = releaseName.replace(/-v\d+$/, '');
+
+        const stackName = prefixToStackName[releasePrefix];
 
         if (!stackName) {
           continue;
@@ -76,6 +100,7 @@ export default {
         }
         map[stackName].push(release);
       }
+
       return map;
     },
 
@@ -92,6 +117,42 @@ export default {
       }
       return map;
     },
+
+    /**
+     * Set of ClusterClass names currently referenced by at least one Cluster.
+     * A release whose name matches a used ClusterClass is considered "in use".
+     */
+    usedClusterClassNames() {
+      const names = new Set();
+
+      for (const cluster of this.clusters) {
+        const className = cluster.spec?.topology?.class;
+
+        if (className) {
+          names.add(className);
+        }
+      }
+
+      return names;
+    },
+
+    /**
+     * Set of ClusterStackRelease names that are in use (i.e. their
+     * corresponding ClusterClass is referenced by a cluster).
+     */
+    usedReleaseNames() {
+      const names = new Set();
+
+      for (const release of this.releases) {
+        const releaseName = release.metadata?.name || '';
+
+        if (this.usedClusterClassNames.has(releaseName)) {
+          names.add(releaseName);
+        }
+      }
+
+      return names;
+    },
   },
 
   async mounted() {
@@ -101,6 +162,37 @@ export default {
   methods: {
     goCreate() {
       this.$router.push({ name: ROUTES.STACKS_CREATE });
+    },
+
+    onEditStack(stack) {
+      this.$router.push({
+        name:  ROUTES.STACKS_CREATE,
+        query: {
+          namespace: stack.metadata?.namespace || 'clusterstacks',
+          name:      stack.metadata?.name,
+        },
+      });
+    },
+
+    async onDeleteStack(stack) {
+      const ns   = stack.metadata?.namespace || 'clusterstacks';
+      const name = stack.metadata?.name;
+
+      if (!name) {
+        return;
+      }
+      if (!window.confirm(this.t('clusterstacks.stacks.confirmDeleteStack').replace('{name}', name))) {
+        return;
+      }
+      try {
+        await this.$store.dispatch('management/request', {
+          method: 'DELETE',
+          url:    `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ ns }/clusterstacks/${ name }`,
+        });
+        await this.load();
+      } catch (e) {
+        this.error = e?.message || this.t('clusterstacks.errors.deleteStack');
+      }
     },
 
     async onDeleteRelease(release) {
@@ -129,7 +221,7 @@ export default {
       this.error = null;
 
       try {
-        const [stacks, releases, clusterClasses] = await Promise.all([
+        const [stacks, releases, clusterClasses, clusters] = await Promise.all([
           this.$store.dispatch('management/findAll', {
             type: 'clusterstack.x-k8s.io.clusterstack',
           }).catch(() => []),
@@ -139,11 +231,15 @@ export default {
           this.$store.dispatch('management/findAll', {
             type: 'cluster.x-k8s.io.clusterclass',
           }).catch(() => []),
+          this.$store.dispatch('management/findAll', {
+            type: 'cluster.x-k8s.io.cluster',
+          }).catch(() => []),
         ]);
 
         this.stacks = stacks || [];
         this.releases = releases || [];
         this.clusterClasses = clusterClasses || [];
+        this.clusters = clusters || [];
       } catch (e) {
         this.error = this.t('clusterstacks.errors.loadStacks');
         console.error(e); // eslint-disable-line no-console

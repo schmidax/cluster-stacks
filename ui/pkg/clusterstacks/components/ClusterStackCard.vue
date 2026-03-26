@@ -4,6 +4,21 @@
       <div class="card-title">
         <h3>{{ stack.metadata.name }}</h3>
         <span class="badge" :class="channelClass">{{ stack.spec?.channel || 'stable' }}</span>
+        <button
+          class="btn btn-sm role-secondary card-edit-btn"
+          :title="t('clusterstacks.common.edit')"
+          @click="$emit('edit-stack', stack)"
+        >
+          <i class="icon icon-edit" />
+        </button>
+        <button
+          class="btn btn-sm role-danger card-delete-btn"
+          :title="hasReleasesInUse ? t('clusterstacks.stacks.card.stackInUse') : t('clusterstacks.common.delete')"
+          :disabled="hasReleasesInUse"
+          @click="$emit('delete-stack', stack)"
+        >
+          <i class="icon icon-trash" />
+        </button>
       </div>
       <div class="card-meta">
         <span class="meta-item">
@@ -34,18 +49,21 @@
         </div>
         <div v-else class="release-chips">
           <span
-            v-for="release in releases"
+            v-for="release in sortedReleases"
             :key="release.metadata.name"
             class="release-chip"
             :class="releaseStatusClass(release)"
             :title="release.metadata.name"
           >
             {{ releaseVersion(release) }}
-            <span v-if="release.spec && release.spec.kubernetesVersion" class="release-k8s">
-              (k8s {{ release.spec.kubernetesVersion }})
+            <span v-if="releaseK8sVersion(release)" class="release-k8s">
+              (k8s {{ releaseK8sVersion(release) }})
+            </span>
+            <span v-if="isReleaseInUse(release)" class="release-in-use" :title="t('clusterstacks.stacks.card.releaseInUse')">
+              <i class="icon icon-lock" />
             </span>
             <button
-              v-if="stack.spec && stack.spec.autoSubscribe"
+              v-if="!isReleaseInUse(release)"
               class="release-delete-btn"
               :title="t('clusterstacks.stacks.card.deleteRelease')"
               @click.stop="$emit('delete-release', release)"
@@ -77,7 +95,7 @@
 export default {
   name: 'ClusterStackCard',
 
-  emits: ['delete-release'],
+  emits: ['delete-release', 'edit-stack', 'delete-stack'],
 
   props: {
     stack: {
@@ -92,9 +110,26 @@ export default {
       type:    Array,
       default: () => [],
     },
+    usedReleaseNames: {
+      type:    Set,
+      default: () => new Set(),
+    },
   },
 
   computed: {
+    hasReleasesInUse() {
+      return this.releases.some((r) => this.usedReleaseNames.has(r.metadata?.name));
+    },
+
+    sortedReleases() {
+      return [...this.releases].sort((a, b) => {
+        const va = parseInt((this.releaseVersion(a) || '').replace(/^v/, ''), 10) || 0;
+        const vb = parseInt((this.releaseVersion(b) || '').replace(/^v/, ''), 10) || 0;
+
+        return va - vb;
+      });
+    },
+
     channelClass() {
       return this.stack.spec?.channel === 'custom' ? 'badge-warning' : 'badge-success';
     },
@@ -134,17 +169,31 @@ export default {
       // Extract version from name pattern: <stack-name>-<version>
       const name = release.metadata.name || '';
       const parts = name.split('-');
+
       return parts[parts.length - 1] || name;
+    },
+
+    releaseK8sVersion(release) {
+      // Try status first (populated by the operator), fall back to spec
+      return release.status?.kubernetesVersion
+        || release.spec?.kubernetesVersion
+        || '';
+    },
+
+    isReleaseInUse(release) {
+      return this.usedReleaseNames.has(release.metadata?.name);
     },
 
     releaseStatusClass(release) {
       const ready = release.status?.ready;
+
       if (ready === true) {
-        return 'chip-success';
+        return this.isReleaseInUse(release) ? 'chip-success' : 'chip-unused';
       }
       if (ready === false) {
         return 'chip-error';
       }
+
       return 'chip-pending';
     },
 
@@ -178,6 +227,22 @@ export default {
   h3 {
     margin: 0;
     font-size: 1.05em;
+  }
+
+  .card-edit-btn {
+    margin-left: auto;
+    padding: 2px 6px;
+    font-size: 0.85em;
+  }
+
+  .card-delete-btn {
+    padding: 2px 6px;
+    font-size: 0.85em;
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
   }
 }
 
@@ -247,6 +312,7 @@ export default {
   gap: 4px;
 
   &.chip-success { background: var(--success-banner-bg); color: var(--success); }
+  &.chip-unused  { background: var(--warning-banner-bg); color: var(--warning); }
   &.chip-error   { background: var(--error-banner-bg);   color: var(--error); }
   &.chip-pending { background: var(--info-banner-bg);    color: var(--info); }
 }
@@ -269,6 +335,11 @@ export default {
   &:hover {
     opacity: 1;
   }
+}
+
+.release-in-use {
+  font-size: 0.85em;
+  opacity: 0.6;
 }
 
 .cc-chip {
