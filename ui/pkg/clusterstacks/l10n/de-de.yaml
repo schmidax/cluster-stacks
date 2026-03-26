@@ -302,6 +302,9 @@ clusterstacks:
       typePlaceholder: Typ auswählen...
       version: Version
       versionPlaceholder: "z.B. v2.6.1 (optional)"
+      fetchConfigUrl: Fetch-Config-URL
+      fetchConfigUrlPlaceholder: "https://github.com/.../releases/latest/components.yaml"
+      fetchConfigUrlHint: URL des Provider-Komponenten-Manifests. Wird automatisch aus der upstream-Provider-Liste befüllt, wenn ein bekannter Provider ausgewählt wird.
       namespace: Namespace
       namespacePlaceholder: rancher-turtles-system
       namespaceHint: Namespace, in dem der Provider installiert wird. Standard ist rancher-turtles-system.

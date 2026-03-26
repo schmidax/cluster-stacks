@@ -96,6 +96,24 @@
         />
       </div>
 
+      <!-- Fetch Config URL (auto-populated from upstream provider list) -->
+      <div class="form-row">
+        <label class="form-label" for="capi-fetch-url">
+          {{ t('clusterstacks.capiProviders.form.fetchConfigUrl') }}
+          <span class="form-optional">{{ t('clusterstacks.capiProviders.form.optional') }}</span>
+        </label>
+        <input
+          id="capi-fetch-url"
+          v-model="form.fetchConfigUrl"
+          type="text"
+          class="form-input"
+          :placeholder="t('clusterstacks.capiProviders.form.fetchConfigUrlPlaceholder')"
+        />
+        <p class="form-hint">
+          {{ t('clusterstacks.capiProviders.form.fetchConfigUrlHint') }}
+        </p>
+      </div>
+
       <!-- Features -->
       <div class="form-row">
         <label class="form-label">
@@ -207,6 +225,36 @@ function parseProvidersFromGo(content) {
     }
   }
 
+  // Build a map of Go const-name → string-value so we can resolve the `name:`
+  // field in provider struct literals (e.g. AWSProviderName → "aws").
+  const constMap = {};
+  const constRegex = /(\w+)\s*=\s*"([^"]+)"/g;
+  let cm;
+
+  while ((cm = constRegex.exec(content)) !== null) {
+    constMap[cm[1]] = cm[2];
+  }
+
+  // Parse &provider{name: ..., url: "...", ...} struct literals to build a
+  // map of provider-name → fetchConfig URL.
+  const urlMap = {};
+  const blockRegex = /&provider\{([\s\S]*?)\}/g;
+  let bm;
+
+  while ((bm = blockRegex.exec(content)) !== null) {
+    const inner    = bm[1];
+    const nameMatch = inner.match(/\bname:\s*(\w+)/);
+    const urlMatch  = inner.match(/\burl:\s*"([^"]+)"/);
+
+    if (nameMatch && urlMatch) {
+      const providerName = constMap[nameMatch[1]] || nameMatch[1];
+
+      urlMap[providerName] = urlMatch[1];
+    }
+  }
+
+  result.urlMap = urlMap;
+
   return result;
 }
 
@@ -231,11 +279,13 @@ export default {
       nameExists:       false,
       loadingProviders: false,
       allProvidersByType: { ...FALLBACK_PROVIDERS },
+      providerUrlMap:   {},
       form:             {
-        name:      '',
-        type:      '',
-        version:   '',
-        features:  {
+        name:           '',
+        type:           '',
+        version:        '',
+        fetchConfigUrl: '',
+        features:       {
           clusterResourceSet: true,
           clusterTopology:    true,
           machinePool:        true,
@@ -309,9 +359,10 @@ export default {
       const exVars     = Array.isArray(ex?.spec?.variables) ? ex.spec.variables : [];
 
       this.form = {
-        name:     ex?.metadata?.name || ex?.spec?.name || '',
-        type:     ex?.spec?.type || '',
-        version:  ex?.spec?.version || '',
+        name:           ex?.metadata?.name || ex?.spec?.name || '',
+        type:           ex?.spec?.type || '',
+        version:        ex?.spec?.version || '',
+        fetchConfigUrl: ex?.spec?.fetchConfig?.url || '',
         features: {
           clusterResourceSet: exFeatures.clusterResourceSet !== undefined ? exFeatures.clusterResourceSet : true,
           clusterTopology:    exFeatures.clusterTopology !== undefined ? exFeatures.clusterTopology : true,
@@ -328,10 +379,15 @@ export default {
         const resp    = await fetch(PROVIDERS_GO_URL);
         const content = await resp.text();
         const parsed  = parseProvidersFromGo(content);
-        const valid   = Object.values(parsed).some((arr) => arr.length > 0);
+        const valid   = Object.entries(parsed)
+          .filter(([k]) => k !== 'urlMap')
+          .some(([, arr]) => arr.length > 0);
 
         if (valid) {
-          this.allProvidersByType = parsed;
+          const { urlMap, ...typeMap } = parsed;
+
+          this.allProvidersByType = typeMap;
+          this.providerUrlMap     = urlMap || {};
         }
       } catch (e) {
         // Network error or CORS – keep the built-in fallback list
@@ -343,9 +399,10 @@ export default {
 
     onTypeChange() {
       if (!this.isEdit) {
-        this.form.name  = '';
-        this.nameSearch = '';
-        this.nameExists = false;
+        this.form.name           = '';
+        this.nameSearch          = '';
+        this.nameExists          = false;
+        this.form.fetchConfigUrl = '';
       }
     },
 
@@ -355,22 +412,25 @@ export default {
         (n) => n === this.nameSearch.trim()
       );
 
-      this.form.name  = match || this.nameSearch.trim();
-      this.nameExists = false;
+      this.form.name           = match || this.nameSearch.trim();
+      this.form.fetchConfigUrl = this.providerUrlMap[this.form.name] || '';
+      this.nameExists          = false;
     },
 
     selectName(name) {
-      this.form.name       = name;
-      this.nameSearch      = name;
-      this.showNameDropdown = false;
+      this.form.name           = name;
+      this.nameSearch          = name;
+      this.form.fetchConfigUrl = this.providerUrlMap[name] || '';
+      this.showNameDropdown    = false;
       this.checkNameExists();
     },
 
     onNameBlur() {
       // Short delay so mousedown.prevent on dropdown items fires first
       setTimeout(() => {
-        this.showNameDropdown = false;
-        this.form.name        = this.nameSearch.trim();
+        this.showNameDropdown    = false;
+        this.form.name           = this.nameSearch.trim();
+        this.form.fetchConfigUrl = this.providerUrlMap[this.form.name] || '';
         if (this.form.name) {
           this.checkNameExists();
         }
@@ -436,6 +496,7 @@ export default {
             name:     name,
             type:     this.form.type,
             ...(this.form.version.trim() ? { version: this.form.version.trim() } : {}),
+            ...(this.form.fetchConfigUrl.trim() ? { fetchConfig: { url: this.form.fetchConfigUrl.trim() } } : {}),
             features: { ...this.form.features },
             ...(this.validVariables.length ? { variables: this.validVariables } : {}),
           },
