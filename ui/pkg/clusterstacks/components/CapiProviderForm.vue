@@ -337,6 +337,11 @@ export default {
       return this.form.variables.filter((v) => v.name.trim());
     },
 
+    // Convert the [{name, value}] array to the map format expected by the API.
+    variablesMap() {
+      return Object.fromEntries(this.validVariables.map((v) => [v.name.trim(), v.value]));
+    },
+
     filteredProviderNames() {
       const names = this.allProvidersByType[this.form.type] || [];
       const q     = this.nameSearch.toLowerCase().trim();
@@ -359,7 +364,17 @@ export default {
         return;
       }
       const exFeatures = ex?.spec?.features || {};
-      const exVars     = Array.isArray(ex?.spec?.variables) ? ex.spec.variables : [];
+
+      // variables may be returned as an array [{name, value}] or as a plain
+      // object/map {"KEY": "value"} depending on the API version – handle both.
+      const rawVars = ex?.spec?.variables;
+      let exVars    = [];
+
+      if (Array.isArray(rawVars)) {
+        exVars = rawVars;
+      } else if (rawVars && typeof rawVars === 'object') {
+        exVars = Object.entries(rawVars).map(([k, v]) => ({ name: k, value: String(v) }));
+      }
 
       this.form = {
         name:           ex?.metadata?.name || ex?.spec?.name || '',
@@ -501,7 +516,7 @@ export default {
             ...(this.form.version.trim() ? { version: this.form.version.trim() } : {}),
             ...(this.form.fetchConfigUrl.trim() ? { fetchConfig: { url: this.form.fetchConfigUrl.trim() } } : {}),
             features: { ...this.form.features },
-            ...(this.validVariables.length ? { variables: this.validVariables } : {}),
+            ...(this.validVariables.length ? { variables: this.variablesMap } : {}),
           },
         };
 
