@@ -360,7 +360,7 @@ export default {
 
       this.form = {
         name:           ex?.metadata?.name || ex?.spec?.name || '',
-        type:           ex?.spec?.type || '',
+        type:           ex?.spec?.type.toLowerCase().trim() || '',
         version:        ex?.spec?.version || '',
         fetchConfigUrl: ex?.spec?.fetchConfig?.url || '',
         features: {
@@ -494,7 +494,7 @@ export default {
           },
           spec: {
             name:     name,
-            type:     this.form.type,
+            type:     this.form.type.toLowerCase().trim(),
             ...(this.form.version.trim() ? { version: this.form.version.trim() } : {}),
             ...(this.form.fetchConfigUrl.trim() ? { fetchConfig: { url: this.form.fetchConfigUrl.trim() } } : {}),
             features: { ...this.form.features },
