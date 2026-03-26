@@ -41,6 +41,17 @@
             :title="release.metadata.name"
           >
             {{ releaseVersion(release) }}
+            <span v-if="release.spec && release.spec.kubernetesVersion" class="release-k8s">
+              (k8s {{ release.spec.kubernetesVersion }})
+            </span>
+            <button
+              v-if="stack.spec && stack.spec.autoSubscribe"
+              class="release-delete-btn"
+              :title="t('clusterstacks.stacks.card.deleteRelease')"
+              @click.stop="$emit('delete-release', release)"
+            >
+              &times;
+            </button>
           </span>
         </div>
       </div>
@@ -65,6 +76,8 @@
 <script>
 export default {
   name: 'ClusterStackCard',
+
+  emits: ['delete-release'],
 
   props: {
     stack: {
@@ -229,10 +242,33 @@ export default {
   border-radius: 12px;
   font-size: 0.85em;
   font-family: monospace;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 
   &.chip-success { background: var(--success-banner-bg); color: var(--success); }
   &.chip-error   { background: var(--error-banner-bg);   color: var(--error); }
   &.chip-pending { background: var(--info-banner-bg);    color: var(--info); }
+}
+
+.release-k8s {
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+.release-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  font-size: 1.1em;
+  color: inherit;
+  opacity: 0.6;
+
+  &:hover {
+    opacity: 1;
+  }
 }
 
 .cc-chip {

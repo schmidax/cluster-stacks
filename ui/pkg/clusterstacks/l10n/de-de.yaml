@@ -81,7 +81,9 @@ clusterstacks:
 
   stacks:
     title: ClusterStacks
+    createBtn: ClusterStack erstellen
     noData: Keine ClusterStacks im Namespace 'clusterstacks' gefunden.
+    confirmDeleteRelease: "ClusterStackRelease \"{name}\" löschen? Das kann nicht rückgängig gemacht werden."
     card:
       name: Name
       provider: Provider
@@ -91,6 +93,29 @@ clusterstacks:
       noReleases: Keine Releases verfügbar.
       status: Status
       clusterClass: ClusterClass
+      deleteRelease: Dieses Release löschen
+
+  stackForm:
+    createTitle: ClusterStack erstellen
+    provider: Provider
+    providerPlaceholder: "z.B. openstack, aws, docker"
+    name: Name
+    namePlaceholder: "z.B. rke2, kubeadm"
+    kubernetesVersion: Kubernetes-Version
+    kubernetesVersionPlaceholder: "z.B. 1.34"
+    channel: Kanal
+    autoSubscribe: Automatisch abonnieren
+    autoSubscribeHint: Wenn aktiviert, werden neue Releases automatisch abonniert. Keine manuelle Versionsliste erforderlich.
+    noProvider: Kein Provider
+    noProviderHint: Verwenden, wenn kein externer CAPI-Infrastruktur-Provider benötigt wird.
+    versions: Versionen
+    versionPlaceholder: "z.B. v1"
+    versionInvalid: "Version muss mit 'v' beginnen, gefolgt von Ziffern (z.B. v1, v2)."
+    addVersion: Version hinzufügen
+    resourceNameHint: Ressourcenname (automatisch generiert)
+    save: ClusterStack erstellen
+    errors:
+      save: ClusterStack konnte nicht erstellt werden.
 
   openstack:
     title: OpenStack-Projekte
@@ -210,6 +235,7 @@ clusterstacks:
     loadQuota: Fehler beim Laden der Quota-Informationen
     loadClusters: Fehler beim Laden der Cluster
     loadStacks: Fehler beim Laden der ClusterStacks
+    deleteRelease: ClusterStackRelease konnte nicht gelöscht werden.
     saveCluster: Fehler beim Speichern des Clusters
     saveCredentials: Fehler beim Speichern der Anmeldedaten
     invalidYaml: Ungültiges YAML-Format
@@ -270,6 +296,7 @@ clusterstacks:
     edit: Bearbeiten
     create: Erstellen
     save: Speichern
+    saving: Wird gespeichert...
     cancel: Abbrechen
     refresh: Aktualisieren
     na: N/A

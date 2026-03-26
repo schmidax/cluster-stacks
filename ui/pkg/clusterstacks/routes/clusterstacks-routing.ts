@@ -36,6 +36,14 @@ const routes: RouteConfig[] = [
     meta:      { product: PRODUCT_NAME },
   },
 
+  // ClusterStack create
+  {
+    name:      ROUTES.STACKS_CREATE,
+    path:      `${CLUSTER_PREFIX}/stacks/create`,
+    component: () => import(/* webpackChunkName: "clusterstacks-stacks-create" */ '../pages/clusterstacks/create.vue'),
+    meta:      { product: PRODUCT_NAME },
+  },
+
   // CSO Management
   {
     name:      ROUTES.CSO_MANAGEMENT,

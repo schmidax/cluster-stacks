@@ -81,7 +81,9 @@ clusterstacks:
 
   stacks:
     title: ClusterStacks
+    createBtn: Create ClusterStack
     noData: No ClusterStacks found in namespace 'clusterstacks'.
+    confirmDeleteRelease: "Delete ClusterStackRelease \"{name}\"? This cannot be undone."
     card:
       name: Name
       provider: Provider
@@ -91,6 +93,29 @@ clusterstacks:
       noReleases: No releases available.
       status: Status
       clusterClass: ClusterClass
+      deleteRelease: Delete this release
+
+  stackForm:
+    createTitle: Create ClusterStack
+    provider: Provider
+    providerPlaceholder: "e.g. openstack, aws, docker"
+    name: Name
+    namePlaceholder: "e.g. rke2, kubeadm"
+    kubernetesVersion: Kubernetes Version
+    kubernetesVersionPlaceholder: "e.g. 1.34"
+    channel: Channel
+    autoSubscribe: Auto Subscribe
+    autoSubscribeHint: When enabled, new releases are automatically subscribed. No manual version list needed.
+    noProvider: No Provider
+    noProviderHint: Use when no external CAPI infrastructure provider is required.
+    versions: Versions
+    versionPlaceholder: "e.g. v1"
+    versionInvalid: "Version must start with 'v' followed by digits only (e.g. v1, v2)."
+    addVersion: Add Version
+    resourceNameHint: Resource name (auto-generated)
+    save: Create ClusterStack
+    errors:
+      save: Failed to create ClusterStack.
 
   openstack:
     title: OpenStack Projects
@@ -209,7 +234,7 @@ clusterstacks:
     loadNetworks: Failed to load networks
     loadQuota: Failed to load quota information
     loadClusters: Failed to load clusters
-    loadStacks: Failed to load ClusterStacks
+    deleteRelease: Failed to delete ClusterStackRelease.
     saveCluster: Failed to save cluster
     saveCredentials: Failed to save credentials
     invalidYaml: Invalid YAML format
@@ -270,6 +295,7 @@ clusterstacks:
     edit: Edit
     create: Create
     save: Save
+    saving: Saving...
     cancel: Cancel
     refresh: Refresh
     na: N/A

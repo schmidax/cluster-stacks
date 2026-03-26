@@ -9,6 +9,7 @@ export const ROUTES = {
   CLUSTERS:               'clusterstacks-clusters',
   CLUSTERS_CREATE:        'clusterstacks-clusters-create',
   STACKS:                 'clusterstacks-stacks',
+  STACKS_CREATE:          'clusterstacks-stacks-create',
   CSO_MANAGEMENT:         'clusterstacks-cso-management',
   OPENSTACK:              'clusterstacks-openstack',
   OPENSTACK_CREATE:       'clusterstacks-openstack-create',

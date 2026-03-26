@@ -2,9 +2,14 @@
   <div class="clusterstacks-page">
     <div class="page-header">
       <h1>{{ t('clusterstacks.stacks.title') }}</h1>
-      <button class="btn role-secondary" @click="load">
-        <i class="icon icon-refresh" /> {{ t('clusterstacks.common.refresh') }}
-      </button>
+      <div class="page-header-actions">
+        <button class="btn role-primary" @click="goCreate">
+          + {{ t('clusterstacks.stacks.createBtn') }}
+        </button>
+        <button class="btn role-secondary" @click="load">
+          <i class="icon icon-refresh" /> {{ t('clusterstacks.common.refresh') }}
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="loading-placeholder">
@@ -29,6 +34,7 @@
         :stack="stack"
         :releases="releasesByStack[stack.metadata.name] || []"
         :cluster-classes="clusterClassesByStack[stack.metadata.name] || []"
+        @delete-release="onDeleteRelease"
       />
     </div>
   </div>
@@ -36,6 +42,7 @@
 
 <script>
 import ClusterStackCard from '../../components/ClusterStackCard.vue';
+import { ROUTES } from '../../config/clusterstacks';
 
 export default {
   name: 'ClusterStacksIndex',
@@ -85,6 +92,31 @@ export default {
   },
 
   methods: {
+    goCreate() {
+      this.$router.push({ name: ROUTES.STACKS_CREATE });
+    },
+
+    async onDeleteRelease(release) {
+      const ns   = release.metadata?.namespace || 'clusterstacks';
+      const name = release.metadata?.name;
+
+      if (!name) {
+        return;
+      }
+      if (!window.confirm(this.t('clusterstacks.stacks.confirmDeleteRelease').replace('{name}', name))) {
+        return;
+      }
+      try {
+        await this.$store.dispatch('management/request', {
+          method: 'DELETE',
+          url:    `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ ns }/clusterstackreleases/${ name }`,
+        });
+        await this.load();
+      } catch (e) {
+        this.error = e?.message || this.t('clusterstacks.errors.deleteRelease');
+      }
+    },
+
     async load() {
       this.loading = true;
       this.error = null;
@@ -130,6 +162,11 @@ export default {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+}
+
+.page-header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .loading-placeholder,
