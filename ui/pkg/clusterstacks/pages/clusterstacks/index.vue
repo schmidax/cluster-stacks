@@ -63,7 +63,14 @@ export default {
     releasesByStack() {
       const map = {};
       for (const release of this.releases) {
-        const stackName = release.spec?.clusterStack?.split('-')[0] || '';
+        // spec.clusterStack holds the parent ClusterStack name (e.g. "openstack-1-34").
+        // Fall back to stripping the trailing version suffix (e.g. "-v1") from metadata.name.
+        const stackName = release.spec?.clusterStack
+          || (release.metadata?.name || '').replace(/-v\d+$/, '');
+
+        if (!stackName) {
+          continue;
+        }
         if (!map[stackName]) {
           map[stackName] = [];
         }
