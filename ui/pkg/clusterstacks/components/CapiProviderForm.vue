@@ -422,8 +422,8 @@ export default {
           ? (this.existing?.metadata?.name || this.resourceName)
           : this.resourceName;
         const namespace = this.isEdit
-          ? (this.existing?.metadata?.namespace || resName)
-          : resName;
+          ? (this.existing?.metadata?.namespace || resName + '-system')
+          : resName + '-system';
 
         const body = {
           apiVersion: 'turtles-capi.cattle.io/v1alpha1',
