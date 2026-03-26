@@ -347,7 +347,20 @@ export default {
           method: 'DELETE',
           url:    `/apis/turtles-capi.cattle.io/v1alpha1/namespaces/${ provider.namespace }/capiproviders/${ provider.name }`,
         });
-        await this.loadProviders();
+
+        // Optimistically remove the provider from the list immediately so the
+        // UI reflects the deletion without waiting for a full reload.
+        this.providers = this.providers.filter((p) => p.uid !== provider.uid);
+
+        // Also delete the namespace that was created for this provider.
+        try {
+          await this.$store.dispatch('management/request', {
+            method: 'DELETE',
+            url:    `/api/v1/namespaces/${ provider.namespace }`,
+          });
+        } catch (e) {
+          console.warn('Could not delete provider namespace:', e); // eslint-disable-line no-console
+        }
       } catch (e) {
         console.error(e); // eslint-disable-line no-console
       }
