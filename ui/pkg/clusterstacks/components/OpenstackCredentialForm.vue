@@ -1,16 +1,5 @@
 <template>
   <div class="credential-form">
-    <!-- Rancher project selector (shown for both new and existing credentials) -->
-    <div v-if="projects.length" class="form-row">
-      <label class="form-label">{{ t('clusterstacks.credentialCreate.rancherProject') }}</label>
-      <select v-model="selectedProjectId" class="project-select">
-        <option value="">{{ t('clusterstacks.credentialCreate.rancherProjectPlaceholder') }}</option>
-        <option v-for="p in projects" :key="p.id" :value="(p.id || '').replace('/', ':')">
-          {{ p.spec && p.spec.displayName ? p.spec.displayName : (p.name || p.id) }}
-        </option>
-      </select>
-    </div>
-
     <!-- clouds.yaml paste / upload -->
     <div class="form-row">
       <div class="yaml-header">
@@ -91,14 +80,11 @@ export default {
       default: null,
     },
 
-    existingProjectId: {
+    // The Rancher project ID (e.g. "local:p-xxxxx") to assign the credential namespace to.
+    // Passed from the overview page or from the route query on create.
+    projectId: {
       type:    String,
       default: '',
-    },
-
-    projects: {
-      type:    Array,
-      default: () => [],
     },
   },
 
@@ -106,10 +92,9 @@ export default {
 
   data() {
     return {
-      yamlContent:       '',
-      yamlError:         null,
-      connectionTested:  false,
-      selectedProjectId: '',
+      yamlContent:      '',
+      yamlError:        null,
+      connectionTested: false,
 
       form: {
         projectName: '',
@@ -126,7 +111,6 @@ export default {
       return !!this.existing;
     },
 
-    // The Kubernetes namespace where the secret is stored: cso-{projectName}
     targetNamespace() {
       return `cso-${this.form.projectName}`;
     },
@@ -137,7 +121,6 @@ export default {
   },
 
   watch: {
-    // Re-populate form whenever the parent asynchronously resolves the existing secret
     existing: {
       immediate: true,
       handler(val) {
@@ -147,14 +130,6 @@ export default {
       },
     },
 
-    // Sync selected project when the parent resolves the existing namespace's project
-    existingProjectId(val) {
-      if (val && !this.selectedProjectId) {
-        this.selectedProjectId = val;
-      }
-    },
-
-    // Require re-test when YAML content changes (only relevant for new credentials)
     yamlContent() {
       if (!this.isEdit) {
         this.connectionTested = false;
@@ -168,18 +143,14 @@ export default {
     populateFromExisting() {
       const data = this.existing.data || {};
       const decode = (k) => (data[k] ? atob(data[k]) : '');
-      // Derive projectName from namespace by stripping the "cso-" prefix
       const ns = this.existing.metadata.namespace || '';
+
       this.form.projectName = ns.startsWith('cso-') ? ns.slice(4) : decode('projectName');
 
       if (data['clouds.yaml']) {
         this.yamlContent = decode('clouds.yaml');
       }
 
-      // Pre-select the current Rancher project
-      this.selectedProjectId = this.existingProjectId;
-
-      // Treat a previously saved credential as already verified
       this.connectionTested = true;
     },
 
@@ -190,23 +161,24 @@ export default {
 
       try {
         const api = this.buildApiService();
+
         await api.getToken();
         this.testResult       = { success: true };
         this.connectionTested = true;
-        // Project name is populated by the service after a successful token request
+
         const projectName = api.getProjectName();
+
         if (projectName) {
           this.form.projectName = projectName;
         }
       } catch (e) {
-        // Rancher's store throws an HTTP response object, not a plain Error.
-        // Try common paths before falling back to String(e).
         const errMsg = e?.data?.message
           || e?.data?.error_description
           || e?.data?.error
           || e?.message
           || (e?.status ? `HTTP ${e.status} ${e.statusText || ''}`.trim() : null)
           || String(e);
+
         this.testResult = { success: false, error: errMsg };
       } finally {
         this.testing = false;
@@ -219,11 +191,15 @@ export default {
 
     onFileUpload(event) {
       const file = event.target.files[0];
-      if (!file) return;
+
+      if (!file) {
+        return;
+      }
+
       const reader = new FileReader();
+
       reader.onload = (e) => {
         this.yamlContent = e.target.result;
-        // Reset input so the same file can be re-selected
         this.$refs.yamlFileInput.value = '';
       };
       reader.readAsText(file);
@@ -236,32 +212,15 @@ export default {
         const secretData = this.buildSecretData();
 
         if (this.isEdit) {
-          // Update existing secret in the existing namespace
           await this.$store.dispatch('management/request', {
             method:  'PUT',
             url:     `/api/v1/namespaces/${this.existing.metadata.namespace}/secrets/openstack`,
             headers: { 'Content-Type': 'application/json' },
             data:    JSON.stringify(secretData),
           });
-
-          // Move namespace to a different Rancher project if the selection changed
-          if (this.selectedProjectId && this.selectedProjectId !== this.existingProjectId) {
-            await this.$store.dispatch('management/request', {
-              method:  'PATCH',
-              url:     `/api/v1/namespaces/${this.existing.metadata.namespace}`,
-              headers: { 'Content-Type': 'application/merge-patch+json' },
-              data:    JSON.stringify({
-                metadata: {
-                  annotations: { 'field.cattle.io/projectId': this.selectedProjectId },
-                },
-              }),
-            });
-          }
         } else {
-          // Ensure the cso-{projectName} namespace exists, create it if not
           await this.ensureNamespace(this.targetNamespace);
 
-          // Create the secret named "openstack" in the new namespace
           await this.$store.dispatch('management/request', {
             method:  'POST',
             url:     `/api/v1/namespaces/${this.targetNamespace}/secrets`,
@@ -285,11 +244,12 @@ export default {
           url:    `/api/v1/namespaces/${name}`,
         });
       } catch {
-        // Namespace does not exist – create it
         const metadata = { name };
-        if (this.selectedProjectId) {
-          metadata.annotations = { 'field.cattle.io/projectId': this.selectedProjectId };
+
+        if (this.projectId) {
+          metadata.annotations = { 'field.cattle.io/projectId': this.projectId };
         }
+
         await this.$store.dispatch('management/request', {
           method:  'POST',
           url:     '/api/v1/namespaces',
@@ -310,7 +270,6 @@ export default {
         namespace: this.isEdit ? this.existing.metadata.namespace : this.targetNamespace,
       };
 
-      // resourceVersion is required by the Kubernetes API for PUT requests (optimistic concurrency).
       if (this.isEdit && this.existing.metadata?.resourceVersion) {
         metadata.resourceVersion = this.existing.metadata.resourceVersion;
       }
@@ -335,15 +294,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.project-select {
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--input-bg);
-  color: var(--body-text);
-}
-
 .credential-form {
   max-width: 700px;
 }

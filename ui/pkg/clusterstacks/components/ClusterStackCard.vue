@@ -74,19 +74,6 @@
         </div>
       </div>
 
-      <!-- ClusterClasses -->
-      <div v-if="clusterClasses.length" class="cc-section">
-        <h4>{{ t('clusterstacks.stacks.card.clusterClass') }}</h4>
-        <div class="cc-chips">
-          <span
-            v-for="cc in clusterClasses"
-            :key="cc.metadata.name"
-            class="cc-chip"
-          >
-            {{ cc.metadata.name }}
-          </span>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -103,10 +90,6 @@ export default {
       required: true,
     },
     releases: {
-      type:    Array,
-      default: () => [],
-    },
-    clusterClasses: {
       type:    Array,
       default: () => [],
     },
@@ -238,6 +221,14 @@ export default {
   .card-delete-btn {
     padding: 2px 6px;
     font-size: 0.85em;
+    background-color: var(--error, #b91c1c);
+    border-color: var(--error, #b91c1c);
+    color: #fff;
+
+    &:not(:disabled):hover {
+      background-color: var(--error-hover, #991b1b);
+      border-color: var(--error-hover, #991b1b);
+    }
 
     &:disabled {
       opacity: 0.4;
@@ -281,8 +272,7 @@ export default {
   .status-unknown { color: var(--muted); }
 }
 
-.releases-section,
-.cc-section {
+.releases-section {
   margin-top: 12px;
 
   h4 {
@@ -294,15 +284,13 @@ export default {
   }
 }
 
-.release-chips,
-.cc-chips {
+.release-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.release-chip,
-.cc-chip {
+.release-chip {
   padding: 3px 10px;
   border-radius: 12px;
   font-size: 0.85em;
@@ -340,11 +328,6 @@ export default {
 .release-in-use {
   font-size: 0.85em;
   opacity: 0.6;
-}
-
-.cc-chip {
-  background: var(--accent-btn);
-  color: var(--primary);
 }
 
 .no-releases {

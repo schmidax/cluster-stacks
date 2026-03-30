@@ -197,6 +197,20 @@
               </div>
             </div>
 
+            <!-- cert-manager repo -->
+            <div class="form-grid">
+              <div class="form-row">
+                <label>{{ t('clusterstacks.cso.install.certManagerRepo') }}</label>
+                <input
+                  v-model="certManagerRepo"
+                  type="text"
+                  class="form-input"
+                  placeholder="https://charts.jetstack.io"
+                />
+                <span class="form-hint">{{ t('clusterstacks.cso.install.certManagerHint') }}</span>
+              </div>
+            </div>
+
             <!-- Provider toggle -->
             <div class="provider-toggle">
               <button
@@ -270,8 +284,19 @@
               </div>
             </div>
 
+            <!-- RuntimeSDK warning -->
+            <div v-if="runtimeSDKEnabled === false" class="banner banner-error mt-10">
+              <i class="icon icon-warning" />
+              {{ t('clusterstacks.cso.install.runtimeSDKMissing') }}
+            </div>
+
+            <!-- Install progress -->
+            <div v-if="installProgress" class="banner banner-info mt-10">
+              <i class="icon icon-spinner icon-spin" /> {{ installProgress }}
+            </div>
+
             <div class="form-actions">
-              <button class="btn role-primary" :disabled="saving" @click="install">
+              <button class="btn role-primary" :disabled="saving || runtimeSDKEnabled === false" @click="install">
                 <i v-if="saving" class="icon icon-spinner icon-spin" />
                 {{ t('clusterstacks.cso.install.btn') }}
               </button>
@@ -314,6 +339,9 @@
 const CSO_NAMESPACE = 'cso-system';
 const DEFAULT_HELM_REPO = 'oci://registry.scs.community/cluster-stacks/cso';
 const DEFAULT_REPO_NAME = 'cso-charts';
+const CERT_MANAGER_NAMESPACE = 'cert-manager';
+const CERT_MANAGER_REPO_NAME = 'jetstack';
+const DEFAULT_CERT_MANAGER_REPO = 'https://charts.jetstack.io';
 
 export default {
   name: 'CsoManagement',
@@ -336,6 +364,9 @@ export default {
       saveSuccess:      null,
       showConfirmSave:  false,
       helmRepo:         DEFAULT_HELM_REPO,
+      certManagerRepo:  DEFAULT_CERT_MANAGER_REPO,
+      certManagerInstalled: null,
+      runtimeSDKEnabled: null,
 
       // Form values (OCI + Git fields combined)
       form: {
@@ -350,6 +381,9 @@ export default {
         gitRepoName:    '',
         gitAccessToken: '',
       },
+
+      // Install progress message
+      installProgress: '',
 
       // Snapshot of form at load time (for dirty tracking)
       originalForm: null,
@@ -404,6 +438,7 @@ export default {
         await Promise.all([
           this.detectCso(),
           this.loadPods(),
+          this.checkRuntimeSDK(),
         ]);
       } finally {
         this.loading = false;
@@ -526,6 +561,41 @@ export default {
       }
     },
 
+    async checkRuntimeSDK() {
+      // Look for the Core provider (cluster-api) and check if RuntimeSDK is set in spec.variables
+      try {
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    '/apis/turtles-capi.cattle.io/v1alpha1/capiproviders',
+        });
+        const items = resp?.items || [];
+        const coreProvider = items.find(
+          (p) => (p.spec?.type || '').toLowerCase() === 'core'
+        );
+
+        if (!coreProvider) {
+          // No core provider installed at all – can't verify
+          this.runtimeSDKEnabled = null;
+
+          return;
+        }
+
+        const vars = coreProvider.spec?.variables || {};
+
+        // variables may be a map { RuntimeSDK: "true" } or array [{ name, value }]
+        if (Array.isArray(vars)) {
+          const found = vars.find((v) => v.name === 'RuntimeSDK');
+
+          this.runtimeSDKEnabled = found && (found.value === 'true' || found.value === true);
+        } else {
+          this.runtimeSDKEnabled = vars.RuntimeSDK === 'true' || vars.RuntimeSDK === true;
+        }
+      } catch {
+        // API not available – skip the check
+        this.runtimeSDKEnabled = null;
+      }
+    },
+
     // ─── Values extraction ────────────────────────────────────────────
 
     extractValues(values) {
@@ -601,18 +671,31 @@ export default {
     async install() {
       this.saving = true;
       this.saveError = null;
+      this.installProgress = '';
 
       try {
+        // 0. Check and install cert-manager if missing
+        this.installProgress = this.t('clusterstacks.cso.install.progress.certManagerCheck');
+        const hasCertManager = await this.isCertManagerInstalled();
+
+        if (!hasCertManager) {
+          await this.installCertManager();
+        }
+
         // 1. Ensure cso-system namespace exists
+        this.installProgress = this.t('clusterstacks.cso.install.progress.namespace');
         await this.ensureNamespace();
 
         // 2. Ensure ClusterRepo exists
+        this.installProgress = this.t('clusterstacks.cso.install.progress.repo');
         await this.ensureClusterRepo();
 
-        // 3. Give Rancher a moment to sync the repo index
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // 3. Wait for Rancher to sync the repo index (poll until ready)
+        this.installProgress = this.t('clusterstacks.cso.install.progress.sync');
+        await this.waitForRepoSync();
 
         // 4. Install via Rancher catalog action
+        this.installProgress = this.t('clusterstacks.cso.install.progress.chart');
         await this.$store.dispatch('management/request', {
           method: 'POST',
           url:    `/v1/catalog.cattle.io.clusterrepos/${ DEFAULT_REPO_NAME }?action=install`,
@@ -630,16 +713,258 @@ export default {
             disableOpenAPIValidation: false,
             noHooks:                  false,
             timeout:                  '600s',
-            wait:                     false,
+            wait:                     true,
           },
         });
 
+        // 5. Wait for the catalog App to appear
+        this.installProgress = this.t('clusterstacks.cso.install.progress.wait');
+        await this.waitForApp();
+
         await this.load();
       } catch (e) {
-        this.saveError = e?.message || this.t('clusterstacks.cso.install.error');
+        this.saveError = this.extractError(e);
       } finally {
         this.saving = false;
+        this.installProgress = '';
       }
+    },
+
+    // ─── cert-manager ─────────────────────────────────────────────────
+
+    async isCertManagerInstalled() {
+      // Check for cert-manager deployment in cert-manager namespace
+      try {
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/apis/apps/v1/namespaces/${ CERT_MANAGER_NAMESPACE }/deployments`,
+        });
+        const items = resp?.items || [];
+        const found = items.some((d) => (d.metadata?.name || '').includes('cert-manager'));
+
+        if (found) {
+          this.certManagerInstalled = true;
+
+          return true;
+        }
+      } catch {}
+
+      // Also check via Rancher catalog apps
+      try {
+        const resp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/apis/catalog.cattle.io/v1/namespaces/${ CERT_MANAGER_NAMESPACE }/apps`,
+        });
+        const found = (resp?.items || []).some((a) => (a.metadata?.name || '').includes('cert-manager'));
+
+        if (found) {
+          this.certManagerInstalled = true;
+
+          return true;
+        }
+      } catch {}
+
+      this.certManagerInstalled = false;
+
+      return false;
+    },
+
+    async installCertManager() {
+      // 1. Ensure cert-manager namespace
+      this.installProgress = this.t('clusterstacks.cso.install.progress.certManagerNs');
+      try {
+        await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/api/v1/namespaces/${ CERT_MANAGER_NAMESPACE }`,
+        });
+      } catch {
+        await this.$store.dispatch('management/request', {
+          method: 'POST',
+          url:    '/api/v1/namespaces',
+          data:   {
+            apiVersion: 'v1',
+            kind:       'Namespace',
+            metadata:   { name: CERT_MANAGER_NAMESPACE },
+          },
+        });
+      }
+
+      // 2. Ensure jetstack ClusterRepo
+      this.installProgress = this.t('clusterstacks.cso.install.progress.certManagerRepo');
+      try {
+        await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/apis/catalog.cattle.io/v1/clusterrepos/${ CERT_MANAGER_REPO_NAME }`,
+        });
+      } catch {
+        await this.$store.dispatch('management/request', {
+          method: 'POST',
+          url:    '/apis/catalog.cattle.io/v1/clusterrepos',
+          data:   {
+            apiVersion: 'catalog.cattle.io/v1',
+            kind:       'ClusterRepo',
+            metadata:   { name: CERT_MANAGER_REPO_NAME },
+            spec:       { url: this.certManagerRepo },
+          },
+        });
+      }
+
+      // 3. Wait for repo sync
+      this.installProgress = this.t('clusterstacks.cso.install.progress.certManagerSync');
+      await this.waitForRepoSync(90000, CERT_MANAGER_REPO_NAME);
+
+      // 4. Install cert-manager chart
+      this.installProgress = this.t('clusterstacks.cso.install.progress.certManagerInstall');
+      await this.$store.dispatch('management/request', {
+        method: 'POST',
+        url:    `/v1/catalog.cattle.io.clusterrepos/${ CERT_MANAGER_REPO_NAME }?action=install`,
+        data:   {
+          charts: [
+            {
+              chartName:   'cert-manager',
+              version:     '',
+              releaseName: 'cert-manager',
+              values:      { crds: { enabled: true } },
+              annotations: {},
+            },
+          ],
+          namespace:                CERT_MANAGER_NAMESPACE,
+          disableOpenAPIValidation: false,
+          noHooks:                  false,
+          timeout:                  '600s',
+          wait:                     true,
+        },
+      });
+
+      // 5. Wait for cert-manager deployment to be ready
+      this.installProgress = this.t('clusterstacks.cso.install.progress.certManagerWait');
+      await this.waitForCertManager();
+    },
+
+    async waitForCertManager(maxWaitMs = 120000) {
+      const start = Date.now();
+
+      while (Date.now() - start < maxWaitMs) {
+        try {
+          const resp = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/apis/apps/v1/namespaces/${ CERT_MANAGER_NAMESPACE }/deployments`,
+          });
+          const deploys = resp?.items || [];
+          const webhook = deploys.find((d) => (d.metadata?.name || '').includes('cert-manager-webhook'));
+
+          if (webhook) {
+            const ready = (webhook.status?.readyReplicas || 0) >= 1;
+
+            if (ready) {
+              this.certManagerInstalled = true;
+
+              return;
+            }
+          }
+        } catch {}
+
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+
+      // Don't throw – cert-manager may still be rolling out; CSO install will fail if it's truly not ready
+    },
+
+    async waitForRepoSync(maxWaitMs = 90000, repoName = DEFAULT_REPO_NAME) {
+      const start = Date.now();
+
+      while (Date.now() - start < maxWaitMs) {
+        try {
+          const repo = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/apis/catalog.cattle.io/v1/clusterrepos/${ repoName }`,
+          });
+
+          const conditions = repo?.status?.conditions || [];
+
+          // Check multiple readiness indicators:
+          // - 'Ready' or 'FollowerReady' (OCI / follower repos)
+          // - 'Downloaded' (standard HTTP Helm repos like jetstack)
+          const ready = conditions.find(
+            (c) => (c.type === 'Ready' || c.type === 'FollowerReady' || c.type === 'Downloaded')
+              && c.status === 'True'
+          );
+
+          if (ready) {
+            return;
+          }
+
+          // Fallback: if downloadTime is set, the index was fetched successfully
+          if (repo?.status?.downloadTime) {
+            return;
+          }
+
+          // Only treat conditions as errors when the reason explicitly signals a failure
+          const errCond = conditions.find(
+            (c) => c.status === 'False' && c.message
+              && /error|fail|invalid/i.test(c.reason || '')
+          );
+
+          if (errCond) {
+            throw new Error(errCond.message);
+          }
+        } catch (e) {
+          // Re-throw user-facing errors (from errCond above)
+          if (e instanceof Error) {
+            throw e;
+          }
+        }
+
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+
+      throw new Error(this.t('clusterstacks.cso.install.repoSyncTimeout'));
+    },
+
+    async waitForApp(maxWaitMs = 30000) {
+      const start = Date.now();
+
+      while (Date.now() - start < maxWaitMs) {
+        try {
+          const resp = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/apis/catalog.cattle.io/v1/namespaces/${ CSO_NAMESPACE }/apps`,
+          });
+          const app = (resp?.items || []).find((a) => {
+            const name = a.metadata?.name || '';
+
+            return name === 'cso' || name.includes('cluster-stack-operator');
+          });
+
+          if (app) {
+            return;
+          }
+        } catch {}
+
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+
+      // Don't throw – the install may still be rolling out
+    },
+
+    extractError(e) {
+      if (typeof e === 'string') {
+        return e;
+      }
+      if (e?.data?.message) {
+        return e.data.message;
+      }
+      if (e?.body?.message) {
+        return e.body.message;
+      }
+      if (e?.message) {
+        return e.message;
+      }
+      if (e?.statusText) {
+        return `${ e.status }: ${ e.statusText }`;
+      }
+
+      return this.t('clusterstacks.cso.install.error');
     },
 
     async ensureNamespace() {

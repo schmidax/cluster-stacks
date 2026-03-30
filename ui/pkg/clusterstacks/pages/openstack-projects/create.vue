@@ -2,12 +2,14 @@
   <div class="credential-create-page">
     <div class="page-header">
       <h1>{{ isEdit ? t('clusterstacks.credentialCreate.editTitle') : t('clusterstacks.credentialCreate.title') }}</h1>
+      <span v-if="projectDisplayName" class="project-context">
+        {{ t('clusterstacks.credentialCreate.forProject') }}: <strong>{{ projectDisplayName }}</strong>
+      </span>
     </div>
 
     <OpenstackCredentialForm
       :existing="existing"
-      :existing-project-id="existingProjectId"
-      :projects="projects"
+      :project-id="projectId"
       @save="onSave"
       @cancel="onCancel"
     />
@@ -25,9 +27,9 @@ export default {
 
   data() {
     return {
-      existing:          null,
-      existingProjectId: '',
-      projects:          [],
+      existing:           null,
+      projectId:          '',
+      projectDisplayName: '',
     };
   },
 
@@ -38,48 +40,61 @@ export default {
   },
 
   async mounted() {
-    await Promise.all([this.loadExisting(), this.loadProjects()]);
+    // The projectId is passed via route query from the overview page
+    this.projectId = this.$route.query.projectId || '';
+
+    if (this.projectId) {
+      await this.resolveProjectName();
+    }
+
+    if (this.isEdit) {
+      await this.loadExisting();
+    }
   },
 
   methods: {
     async loadExisting() {
       const { namespace } = this.$route.query;
-      if (namespace) {
-        try {
-          const [secret, ns] = await Promise.all([
-            this.$store.dispatch('management/request', {
-              method: 'GET',
-              url:    `/api/v1/namespaces/${namespace}/secrets/openstack`,
-            }),
-            this.$store.dispatch('management/request', {
-              method: 'GET',
-              url:    `/api/v1/namespaces/${namespace}`,
-            }),
-          ]);
 
-          this.existing          = secret;
-          this.existingProjectId = ns?.metadata?.annotations?.['field.cattle.io/projectId'] || '';
-        } catch {
-          // ignore
+      if (!namespace) {
+        return;
+      }
+
+      try {
+        const [secret, ns] = await Promise.all([
+          this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/api/v1/namespaces/${namespace}/secrets/openstack`,
+          }),
+          this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/api/v1/namespaces/${namespace}`,
+          }),
+        ]);
+
+        this.existing = secret;
+
+        // Resolve project from namespace annotation if not already set
+        if (!this.projectId) {
+          this.projectId = ns?.metadata?.annotations?.['field.cattle.io/projectId'] || '';
+
+          if (this.projectId) {
+            await this.resolveProjectName();
+          }
         }
+      } catch {
+        // ignore
       }
     },
 
-    async loadProjects() {
+    async resolveProjectName() {
       try {
-        // In Rancher Dashboard the local/management cluster is represented by '_' in the URL,
-        // but the Steve API namespaces its resources under 'local'.
-        const rawCluster = this.$route.params.cluster;
-        const clusterId = rawCluster === '_' ? 'local' : rawCluster;
         const all = await this.$store.dispatch('management/findAll', { type: 'management.cattle.io.project' });
+        const match = (all || []).find((p) => p.id === this.projectId);
 
-        // Projects are namespaced to their cluster in the Steve API (metadata.namespace = clusterId).
-        // Only expose projects whose display name starts with "cso-".
-        this.projects = (all || [])
-          .filter((p) => (p.metadata?.namespace || p.spec?.clusterName) === clusterId)
-          .filter((p) => (p.spec?.displayName || p.metadata?.name || '').startsWith('cso-'));
+        this.projectDisplayName = match?.spec?.displayName || match?.metadata?.name || this.projectId;
       } catch {
-        this.projects = [];
+        this.projectDisplayName = this.projectId;
       }
     },
 
@@ -104,6 +119,14 @@ export default {
 }
 
 .page-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
   margin-bottom: 20px;
+}
+
+.project-context {
+  font-size: 0.9em;
+  color: var(--muted);
 }
 </style>

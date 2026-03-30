@@ -139,6 +139,7 @@ export class OpenStackApiService {
   private token: string | null = null;
   private catalog: CatalogEntry[] = [];
   private currentProjectId: string | null = null;
+  private currentUserId: string | null = null;
 
   /**
    * @param cloudsYaml  Raw text content of a clouds.yaml file, or a pre-parsed credential object.
@@ -179,6 +180,9 @@ export class OpenStackApiService {
     }
     if (response.token?.project?.id) {
       this.currentProjectId = response.token.project.id;
+    }
+    if (response.token?.user?.id) {
+      this.currentUserId = response.token.user.id;
     }
     // Prefer the project name returned by Keystone over the parsed one
     if (response.token?.project?.name) {
@@ -447,5 +451,67 @@ export class OpenStackApiService {
 
   getCurrentProjectId(): string | null {
     return this.currentProjectId;
+  }
+
+  getCurrentUserId(): string | null {
+    return this.currentUserId;
+  }
+
+  // ─── EC2 Credentials ────────────────────────────────────────────────────
+
+  async listEC2Credentials(): Promise<any[]> {
+    await this.getToken();
+    const url = this.keystoneUrl('/credentials?type=ec2');
+    const response = await this.store.dispatch('management/request', {
+      method:               'GET',
+      url,
+      headers:              { 'X-Auth-Token': this.token },
+      redirectUnauthorized: false,
+    });
+
+    const all = (response.credentials || []).map((c: any) => {
+      let parsedBlob: any = {};
+
+      try {
+        parsedBlob = JSON.parse(c.blob || '{}');
+      } catch { /* ignore */ }
+
+      return { ...c, parsedBlob };
+    });
+
+    // Filter to only EC2 credentials belonging to the current project
+    if (this.currentProjectId) {
+      return all.filter((c: any) => c.project_id === this.currentProjectId);
+    }
+
+    return all;
+  }
+
+  async createEC2Credential(): Promise<any> {
+    await this.getToken();
+    const url = this.keystoneUrl(`/users/${ this.currentUserId }/credentials/OS-EC2`);
+    const response = await this.store.dispatch('management/request', {
+      method:               'POST',
+      url,
+      headers:              {
+        'X-Auth-Token': this.token,
+        'Content-Type': 'application/json',
+      },
+      data:                 JSON.stringify({ tenant_id: this.currentProjectId }),
+      redirectUnauthorized: false,
+    });
+
+    return response.credential;
+  }
+
+  async deleteEC2Credential(credentialId: string): Promise<void> {
+    await this.getToken();
+    const url = this.keystoneUrl(`/credentials/${ credentialId }`);
+    await this.store.dispatch('management/request', {
+      method:               'DELETE',
+      url,
+      headers:              { 'X-Auth-Token': this.token },
+      redirectUnauthorized: false,
+    });
   }
 }

@@ -8,13 +8,15 @@ export const ROUTES = {
   DASHBOARD:              'clusterstacks-dashboard',
   CLUSTERS:               'clusterstacks-clusters',
   CLUSTERS_CREATE:        'clusterstacks-clusters-create',
+  CLUSTERS_DETAIL:        'clusterstacks-clusters-detail',
   STACKS:                 'clusterstacks-stacks',
   STACKS_CREATE:          'clusterstacks-stacks-create',
   CSO_MANAGEMENT:         'clusterstacks-cso-management',
   OPENSTACK:              'clusterstacks-openstack',
   OPENSTACK_CREATE:       'clusterstacks-openstack-create',
-  OPENSTACK_RESOURCES:    'clusterstacks-openstack-resources',
-  CAPI_PROVIDERS:         'clusterstacks-capi-providers',
+  OPENSTACK_RESOURCES:      'clusterstacks-openstack-resources',
+  OPENSTACK_OBJECTSTORAGE:  'clusterstacks-openstack-objectstorage',
+  CAPI_PROVIDERS:           'clusterstacks-capi-providers',
   CAPI_PROVIDERS_CREATE:  'clusterstacks-capi-providers-create',
 };
 
@@ -25,8 +27,9 @@ export const NAV = {
   STACKS:               'clusterstacks-stacks',
   CSO_MANAGEMENT:       'clusterstacks-cso-management',
   OPENSTACK:            'clusterstacks-openstack',
-  OPENSTACK_RESOURCES:  'clusterstacks-openstack-resources',
-  CAPI_PROVIDERS:       'clusterstacks-capi-providers',
+  OPENSTACK_RESOURCES:      'clusterstacks-openstack-resources',
+  OPENSTACK_OBJECTSTORAGE:  'clusterstacks-openstack-objectstorage',
+  CAPI_PROVIDERS:           'clusterstacks-capi-providers',
 };
 
 export function init($plugin: IPlugin, store: any) {
@@ -41,7 +44,7 @@ export function init($plugin: IPlugin, store: any) {
   // Register the product
   product({
     inStore:             'management',
-    icon:                'cluster-management',
+    icon:                'scs-logo',
     label:               'ClusterStacks',
     to:                  { name: ROUTES.DASHBOARD, params: { cluster: BLANK_CLUSTER } },
     removable:           false,
@@ -117,6 +120,15 @@ export function init($plugin: IPlugin, store: any) {
     weight:     70,
   });
 
+  // OpenStack Object Storage menu item
+  virtualType({
+    name:       NAV.OPENSTACK_OBJECTSTORAGE,
+    labelKey:   'clusterstacks.nav.openstackObjectstorage',
+    route:      { name: ROUTES.OPENSTACK_OBJECTSTORAGE, params: { cluster: BLANK_CLUSTER } },
+    icon:       'folder',
+    weight:     69,
+  });
+
   // CAPI Providers menu item
   virtualType({
     name:       NAV.CAPI_PROVIDERS,
@@ -147,6 +159,7 @@ export function init($plugin: IPlugin, store: any) {
   basicType([
     NAV.OPENSTACK,
     NAV.OPENSTACK_RESOURCES,
+    NAV.OPENSTACK_OBJECTSTORAGE,
   ], 'OpenStack');
 
   // Weight the nav types so they appear in the right order
@@ -155,6 +168,7 @@ export function init($plugin: IPlugin, store: any) {
   weightType(NAV.STACKS,               81, true);
   weightType(NAV.CSO_MANAGEMENT,       80, true);
   weightType(NAV.OPENSTACK,            71, true);
-  weightType(NAV.OPENSTACK_RESOURCES,  70, true);
-  weightType(NAV.CAPI_PROVIDERS,       60, true);
+  weightType(NAV.OPENSTACK_RESOURCES,      70, true);
+  weightType(NAV.OPENSTACK_OBJECTSTORAGE,  69, true);
+  weightType(NAV.CAPI_PROVIDERS,           60, true);
 }

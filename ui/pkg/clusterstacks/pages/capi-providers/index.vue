@@ -180,11 +180,23 @@ export default {
 
   async mounted() {
     await this.loadProviders();
+    // Poll every 10 s so provider status updates automatically
+    this._pollTimer = setInterval(() => this.loadProviders(), 10000);
+  },
+
+  beforeDestroy() {
+    clearInterval(this._pollTimer);
   },
 
   methods: {
     async loadProviders() {
-      this.loading = true;
+      // Only show full loading spinner on the initial load, not on poll refreshes
+      const isInitial = !this.providers.length;
+
+      if (isInitial) {
+        this.loading = true;
+      }
+
       try {
         const response = await this.$store.dispatch('management/request', {
           method: 'GET',

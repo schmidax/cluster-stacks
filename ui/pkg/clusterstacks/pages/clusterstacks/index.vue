@@ -33,24 +33,31 @@
         :key="stack.metadata.uid"
         :stack="stack"
         :releases="releasesByStack[stack.metadata.name] || []"
-        :cluster-classes="clusterClassesByStack[stack.metadata.name] || []"
         :used-release-names="usedReleaseNames"
         @delete-release="onDeleteRelease"
         @edit-stack="onEditStack"
         @delete-stack="onDeleteStack"
       />
     </div>
+
+    <ConfirmDeleteDialog
+      :is-open="showDeleteDialog"
+      :confirmation-value="pendingDelete ? pendingDelete.name : ''"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
   </div>
 </template>
 
 <script>
 import ClusterStackCard from '../../components/ClusterStackCard.vue';
+import ConfirmDeleteDialog from '../../components/ConfirmDeleteDialog.vue';
 import { ROUTES } from '../../config/clusterstacks';
 
 export default {
   name: 'ClusterStacksIndex',
 
-  components: { ClusterStackCard },
+  components: { ClusterStackCard, ConfirmDeleteDialog },
 
   data() {
     return {
@@ -60,6 +67,8 @@ export default {
       clusters:             [],
       loading:              false,
       error:                null,
+      showDeleteDialog:     false,
+      pendingDelete:        null,
     };
   },
 
@@ -181,18 +190,12 @@ export default {
       if (!name) {
         return;
       }
-      if (!window.confirm(this.t('clusterstacks.stacks.confirmDeleteStack').replace('{name}', name))) {
-        return;
-      }
-      try {
-        await this.$store.dispatch('management/request', {
-          method: 'DELETE',
-          url:    `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ ns }/clusterstacks/${ name }`,
-        });
-        await this.load();
-      } catch (e) {
-        this.error = e?.message || this.t('clusterstacks.errors.deleteStack');
-      }
+      this.pendingDelete = {
+        type: 'stack',
+        name,
+        ns,
+      };
+      this.showDeleteDialog = true;
     },
 
     async onDeleteRelease(release) {
@@ -202,18 +205,47 @@ export default {
       if (!name) {
         return;
       }
-      if (!window.confirm(this.t('clusterstacks.stacks.confirmDeleteRelease').replace('{name}', name))) {
+      this.pendingDelete = {
+        type: 'release',
+        name,
+        ns,
+      };
+      this.showDeleteDialog = true;
+    },
+
+    async confirmDelete() {
+      this.showDeleteDialog = false;
+      const { type, name, ns } = this.pendingDelete || {};
+
+      this.pendingDelete = null;
+
+      if (!name) {
         return;
       }
+
       try {
-        await this.$store.dispatch('management/request', {
-          method: 'DELETE',
-          url:    `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ ns }/clusterstackreleases/${ name }`,
-        });
+        if (type === 'stack') {
+          await this.$store.dispatch('management/request', {
+            method: 'DELETE',
+            url:    `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ ns }/clusterstacks/${ name }`,
+          });
+        } else {
+          await this.$store.dispatch('management/request', {
+            method: 'DELETE',
+            url:    `/apis/clusterstack.x-k8s.io/v1alpha1/namespaces/${ ns }/clusterstackreleases/${ name }`,
+          });
+        }
         await this.load();
       } catch (e) {
-        this.error = e?.message || this.t('clusterstacks.errors.deleteRelease');
+        this.error = e?.message || this.t(
+          type === 'stack' ? 'clusterstacks.errors.deleteStack' : 'clusterstacks.errors.deleteRelease'
+        );
       }
+    },
+
+    cancelDelete() {
+      this.showDeleteDialog = false;
+      this.pendingDelete    = null;
     },
 
     async load() {
@@ -248,8 +280,8 @@ export default {
       }
     },
 
-    t(key) {
-      return this.$store.getters['i18n/t'](key);
+    t(key, args) {
+      return this.$store.getters['i18n/t'](key, args);
     },
   },
 };

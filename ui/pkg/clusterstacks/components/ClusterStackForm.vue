@@ -360,6 +360,25 @@ export default {
             },
           });
         } else {
+          // Ensure the target namespace exists before creating the resource.
+          try {
+            await this.$store.dispatch('management/request', {
+              method: 'GET',
+              url:    `/api/v1/namespaces/${ DEFAULT_NAMESPACE }`,
+            });
+          } catch {
+            // Namespace does not exist – create it.
+            await this.$store.dispatch('management/request', {
+              method: 'POST',
+              url:    '/api/v1/namespaces',
+              data:   {
+                apiVersion: 'v1',
+                kind:       'Namespace',
+                metadata:   { name: DEFAULT_NAMESPACE },
+              },
+            });
+          }
+
           // Create new ClusterStack via POST
           await this.$store.dispatch('management/request', {
             method: 'POST',

@@ -90,13 +90,45 @@
         <label class="form-label" for="capi-version">
           {{ t('clusterstacks.capiProviders.form.version') }}
         </label>
+        <div v-if="providerVersions.length || providerVersionsLoading" class="version-select-row">
+          <select
+            id="capi-version"
+            v-model="form.version"
+            class="form-select"
+            :disabled="providerVersionsLoading"
+            @change="onProviderVersionChange"
+          >
+            <option value="">
+              {{ t('clusterstacks.capiProviders.form.versionLatest') }}
+            </option>
+            <option
+              v-for="ver in providerVersions"
+              :key="ver"
+              :value="ver"
+            >
+              {{ ver }}
+            </option>
+          </select>
+          <button
+            class="btn btn-sm role-secondary ml-5"
+            :disabled="providerVersionsLoading"
+            type="button"
+            @click="fetchProviderVersions"
+          >
+            <i :class="providerVersionsLoading ? 'icon icon-spinner icon-spin' : 'icon icon-refresh'" />
+          </button>
+        </div>
         <input
+          v-else
           id="capi-version"
           v-model="form.version"
           type="text"
           class="form-input"
           :placeholder="t('clusterstacks.capiProviders.form.versionPlaceholder')"
         />
+        <p v-if="providerVersionsError" class="text-error mt-5">
+          {{ providerVersionsError }}
+        </p>
       </div>
 
       <!-- Fetch Config URL (auto-populated from upstream provider list) -->
@@ -144,6 +176,17 @@
           {{ t('clusterstacks.capiProviders.form.variables') }}
           <span class="form-optional">{{ t('clusterstacks.capiProviders.form.optional') }}</span>
         </label>
+        <div class="features-group">
+          <label class="checkbox-label">
+            <input v-model="form.runtimeSDK" type="checkbox" />
+            RuntimeSDK
+          </label>
+          <span class="form-hint">{{ t('clusterstacks.capiProviders.form.runtimeSDKHint') }}</span>
+        </div>
+        <div v-if="!form.runtimeSDK" class="banner banner-warning mt-5">
+          <i class="icon icon-warning" />
+          {{ t('clusterstacks.capiProviders.form.runtimeSDKWarning') }}
+        </div>
         <div class="variables-list">
           <div
             v-for="(variable, idx) in form.variables"
@@ -172,6 +215,63 @@
           + {{ t('clusterstacks.capiProviders.form.addVariable') }}
         </button>
       </div>
+
+      <!-- OpenStack Resource Controller (only for Infrastructure + openstack) -->
+      <div v-if="showOrcSection" class="form-row">
+        <label class="form-label">
+          {{ t('clusterstacks.capiProviders.form.orcTitle') }}
+        </label>
+        <p class="form-hint">{{ t('clusterstacks.capiProviders.form.orcHint') }}</p>
+
+        <!-- Install method toggle -->
+        <div class="provider-toggle mt-5">
+          <button
+            class="btn btn-sm"
+            :class="orcMethod === 'manifest' ? 'role-primary' : 'role-secondary'"
+            @click="orcMethod = 'manifest'"
+          >
+            Manifest
+          </button>
+          <button
+            class="btn btn-sm"
+            :class="orcMethod === 'helm' ? 'role-primary' : 'role-secondary'"
+            disabled
+            :title="t('clusterstacks.capiProviders.form.orcHelmNotAvailable')"
+          >
+            Helm
+            <span class="form-optional">({{ t('clusterstacks.capiProviders.form.orcHelmFuture') }})</span>
+          </button>
+        </div>
+
+          <!-- Manifest URL -->
+        <div v-if="orcMethod === 'manifest'" class="mt-5">
+          <input
+            v-model="orcManifestUrl"
+            type="text"
+            class="form-input"
+            placeholder="https://github.com/k-orc/openstack-resource-controller/releases/latest/download/install.yaml"
+          />
+        </div>
+
+        <!-- Helm (future) -->
+        <div v-if="orcMethod === 'helm'" class="mt-5">
+          <input
+            v-model="orcHelmRepo"
+            type="text"
+            class="form-input"
+            disabled
+            :placeholder="t('clusterstacks.capiProviders.form.orcHelmPlaceholder')"
+          />
+        </div>
+      </div>
+
+      <!-- ORC install progress -->
+      <div v-if="orcProgress" class="banner banner-info mt-5">
+        <i class="icon icon-spinner icon-spin" /> {{ orcProgress }}
+      </div>
+      <div v-if="orcError" class="banner banner-error mt-5">
+        {{ orcError }}
+      </div>
     </div>
 
     <div v-if="error" class="form-error">
@@ -184,7 +284,7 @@
       </button>
       <button class="btn role-primary" :disabled="!isValid || saving || nameExists" @click="save">
         <span v-if="saving">{{ t('clusterstacks.common.loading') }}</span>
-        <span v-else>{{ t('clusterstacks.capiProviders.form.save') }}</span>
+        <span v-else>{{ isEdit ? t('clusterstacks.capiProviders.form.saveEdit') : t('clusterstacks.capiProviders.form.save') }}</span>
       </button>
     </div>
   </div>
@@ -195,11 +295,11 @@ const PROVIDERS_GO_URL = 'https://raw.githubusercontent.com/kubernetes-sigs/clus
 
 // Fallback static list in case the URL is unreachable
 const FALLBACK_PROVIDERS = {
-  Core:           ['cluster-api'],
-  Infrastructure: ['aws', 'azure', 'byoh', 'cloudstack', 'digitalocean', 'docker', 'gcp', 'harvester-harvester', 'hetzner', 'hivelocity-hivelocity', 'huawei', 'ibmcloud', 'ionoscloud-ionoscloud', 'k0sproject-k0smotron', 'kubevirt', 'kubekey', 'linode-linode', 'maas', 'metal-stack', 'metal3', 'nested', 'nutanix', 'oci', 'opennebula', 'openstack', 'outscale', 'proxmox', 'scaleway', 'sidero', 'tinkerbell-tinkerbell', 'vcd', 'vcluster', 'virtink', 'vsphere', 'vultr-vultr'],
-  Bootstrap:      ['canonical-kubernetes', 'k0sproject-k0smotron', 'kubeadm', 'kubekey-k3s', 'microk8s', 'rke2', 'talos'],
-  ControlPlane:   ['canonical-kubernetes', 'hosted-control-plane', 'k0sproject-k0smotron', 'kamaji', 'kubeadm', 'kubekey-k3s', 'microk8s', 'nested', 'rke2', 'talos'],
-  Addon:          ['eitco-cdk8s', 'helm', 'rancher-fleet'],
+  core:           ['cluster-api'],
+  infrastructure: ['aws', 'azure', 'byoh', 'cloudstack', 'digitalocean', 'docker', 'gcp', 'harvester-harvester', 'hetzner', 'hivelocity-hivelocity', 'huawei', 'ibmcloud', 'ionoscloud-ionoscloud', 'k0sproject-k0smotron', 'kubevirt', 'kubekey', 'linode-linode', 'maas', 'metal-stack', 'metal3', 'nested', 'nutanix', 'oci', 'opennebula', 'openstack', 'outscale', 'proxmox', 'scaleway', 'sidero', 'tinkerbell-tinkerbell', 'vcd', 'vcluster', 'virtink', 'vsphere', 'vultr-vultr'],
+  bootstrap:      ['canonical-kubernetes', 'k0sproject-k0smotron', 'kubeadm', 'kubekey-k3s', 'microk8s', 'rke2', 'talos'],
+  controlPlane:   ['canonical-kubernetes', 'hosted-control-plane', 'k0sproject-k0smotron', 'kamaji', 'kubeadm', 'kubekey-k3s', 'microk8s', 'nested', 'rke2', 'talos'],
+  addon:          ['eitco-cdk8s', 'helm', 'rancher-fleet'],
 };
 
 function parseProvidersFromGo(content) {
@@ -207,11 +307,11 @@ function parseProvidersFromGo(content) {
   // are always on their own line at column 0. Using just \) would stop
   // prematurely at any ) inside inline comments (e.g. "(also owned by Rancher)").
   const sectionMap = {
-    Core:           /\/\/ core providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
-    Infrastructure: /\/\/ Infra providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
-    Bootstrap:      /\/\/ Bootstrap providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
-    ControlPlane:   /\/\/ ControlPlane providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
-    Addon:          /\/\/ Add-on providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
+    core:           /\/\/ core providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
+    infrastructure: /\/\/ Infra providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
+    bootstrap:      /\/\/ Bootstrap providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
+    controlPlane:   /\/\/ ControlPlane providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
+    addon:          /\/\/ Add-on providers\.[\s\S]*?const \(([\s\S]*?\n)\)/i,
   };
 
   const result = {};
@@ -238,21 +338,45 @@ function parseProvidersFromGo(content) {
     constMap[cm[1]] = cm[2];
   }
 
-  // Parse &provider{name: ..., url: "...", ...} struct literals to build a
-  // map of provider-name → fetchConfig URL.
+  // Parse &provider{name: ..., url: "...", providerType: ...} struct literals
+  // to build a map keyed by "Type/name" → fetchConfig URL.
+  // This avoids collisions when the same provider name appears in multiple types
+  // (e.g. "rke2" in both Bootstrap and ControlPlane with different URLs).
   const urlMap = {};
+
+  // Map Go providerType constants to our type labels
+  const typeConstMap = {
+    CoreProviderType:                'core',
+    InfrastructureProviderType:      'infrastructure',
+    BootstrapProviderType:           'bootstrap',
+    ControlPlaneProviderType:        'controlPlane',
+    AddonProviderType:               'addon',
+    IPAMProviderType:                'ipam',
+    RuntimeExtensionProviderType:    'runtimeExtension',
+  };
+
   const blockRegex = /&provider\{([\s\S]*?)\}/g;
   let bm;
 
   while ((bm = blockRegex.exec(content)) !== null) {
-    const inner    = bm[1];
-    const nameMatch = inner.match(/\bname:\s*(\w+)/);
-    const urlMatch  = inner.match(/\burl:\s*"([^"]+)"/);
+    const inner       = bm[1];
+    const nameMatch   = inner.match(/\bname:\s*(\w+)/);
+    const urlMatch    = inner.match(/\burl:\s*"([^"]+)"/);
+    const ptMatch     = inner.match(/\bproviderType:\s*\w+\.(\w+)/);
 
     if (nameMatch && urlMatch) {
       const providerName = constMap[nameMatch[1]] || nameMatch[1];
+      const providerType = ptMatch ? (typeConstMap[ptMatch[1]] || '') : '';
 
-      urlMap[providerName] = urlMatch[1];
+      if (providerType) {
+        // Type-qualified key: "Bootstrap/rke2"
+        urlMap[`${ providerType }/${ providerName }`] = urlMatch[1];
+      }
+
+      // Always store under plain name as fallback (last writer wins)
+      if (!urlMap[providerName]) {
+        urlMap[providerName] = urlMatch[1];
+      }
     }
   }
 
@@ -283,11 +407,22 @@ export default {
       loadingProviders: false,
       allProvidersByType: { ...FALLBACK_PROVIDERS },
       providerUrlMap:   {},
+      orcMethod:          'manifest',
+      orcManifestUrl:            'https://github.com/k-orc/openstack-resource-controller/releases/latest/download/install.yaml',
+      orcHelmRepo:               '',
+      orcProgress:               '',
+      orcError:                  '',
+      providerVersions:          [],
+      providerVersionsLoading:   false,
+      providerVersionsError:     '',
+      versionChangeInternal:     false,
+      lastFetchedRepo:           '',
       form:             {
         name:           '',
         type:           '',
         version:        '',
         fetchConfigUrl: '',
+        runtimeSDK:     true,
         features:       {
           clusterResourceSet: true,
           clusterTopology:    true,
@@ -296,11 +431,11 @@ export default {
         variables: [],
       },
       providerTypes: [
-        { value: 'Infrastructure', label: 'Infrastructure' },
-        { value: 'ControlPlane',   label: 'ControlPlane' },
-        { value: 'Bootstrap',      label: 'Bootstrap' },
-        { value: 'Core',           label: 'Core' },
-        { value: 'Addon',          label: 'Addon' },
+        { value: 'infrastructure', label: 'infrastructure' },
+        { value: 'controlPlane',   label: 'controlPlane' },
+        { value: 'bootstrap',      label: 'bootstrap' },
+        { value: 'core',           label: 'core' },
+        { value: 'addon',          label: 'addon' },
       ],
     };
   },
@@ -312,6 +447,31 @@ export default {
         this.applyExisting(val);
       },
     },
+
+    'form.fetchConfigUrl': {
+      handler(url) {
+        // Skip re-fetch when the URL was changed by our own version selector
+        if (this.versionChangeInternal) {
+          this.versionChangeInternal = false;
+
+          return;
+        }
+
+        if (url && url.includes('github.com')) {
+          // Only re-fetch if it's a different repo
+          const m = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+          const repoKey = m ? `${ m[1] }/${ m[2] }` : '';
+
+          if (repoKey && repoKey !== this.lastFetchedRepo) {
+            this.fetchProviderVersions();
+          }
+        } else {
+          this.providerVersions      = [];
+          this.providerVersionsError  = '';
+          this.lastFetchedRepo        = '';
+        }
+      },
+    },
   },
 
   computed: {
@@ -321,6 +481,21 @@ export default {
 
     isValid() {
       return !!this.form.name.trim() && !!this.form.type;
+    },
+
+    showOrcSection() {
+      return this.form.type === 'infrastructure'
+        && this.form.name.toLowerCase() === 'openstack';
+    },
+
+    /**
+     * Extract GitHub owner/repo from the fetchConfigUrl.
+     * Expects: https://github.com/{owner}/{repo}/releases/...
+     */
+    fetchConfigGitHub() {
+      const m = this.form.fetchConfigUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+
+      return m ? { owner: m[1], repo: m[2] } : null;
     },
 
     // Auto-generated metadata.name used when creating a new CAPIProvider.
@@ -338,13 +513,18 @@ export default {
     },
 
     // Convert the [{name, value}] array to the map format expected by the API.
+    // Merges the RuntimeSDK toggle into the map.
     variablesMap() {
-      return Object.fromEntries(this.validVariables.map((v) => [v.name.trim(), v.value]));
+      const map = Object.fromEntries(this.validVariables.map((v) => [v.name.trim(), v.value]));
+
+      map.RuntimeSDK = String(this.form.runtimeSDK);
+
+      return map;
     },
 
     filteredProviderNames() {
       const names = this.allProvidersByType[this.form.type] || [];
-      const q     = this.nameSearch.toLowerCase().trim();
+      const q     = this.nameSearch;
 
       if (!q) {
         return names;
@@ -369,6 +549,7 @@ export default {
       // object/map {"KEY": "value"} depending on the API version – handle both.
       const rawVars = ex?.spec?.variables;
       let exVars    = [];
+      let runtimeSDK = false;
 
       if (Array.isArray(rawVars)) {
         exVars = rawVars;
@@ -376,11 +557,20 @@ export default {
         exVars = Object.entries(rawVars).map(([k, v]) => ({ name: k, value: String(v) }));
       }
 
+      // Extract RuntimeSDK from variables into its own toggle
+      const runtimeVar = exVars.find((v) => v.name === 'RuntimeSDK');
+
+      if (runtimeVar) {
+        runtimeSDK = runtimeVar.value === 'true' || runtimeVar.value === true;
+        exVars = exVars.filter((v) => v.name !== 'RuntimeSDK');
+      }
+
       this.form = {
         name:           ex?.metadata?.name || ex?.spec?.name || '',
-        type:           ex?.spec?.type.toLowerCase().trim() || '',
+        type:           ex?.spec?.type || '',
         version:        ex?.spec?.version || '',
         fetchConfigUrl: ex?.spec?.fetchConfig?.url || '',
+        runtimeSDK,
         features: {
           clusterResourceSet: exFeatures.clusterResourceSet !== undefined ? exFeatures.clusterResourceSet : true,
           clusterTopology:    exFeatures.clusterTopology !== undefined ? exFeatures.clusterTopology : true,
@@ -415,6 +605,20 @@ export default {
       }
     },
 
+    /**
+     * Look up the fetchConfig URL for a provider, preferring the type-qualified
+     * key (e.g. "Bootstrap/rke2") over the plain-name fallback.
+     */
+    lookupProviderUrl(type, name) {
+      if (!type || !name) {
+        return '';
+      }
+
+      return this.providerUrlMap[`${ type }/${ name }`]
+        || this.providerUrlMap[name]
+        || '';
+    },
+
     onTypeChange() {
       if (!this.isEdit) {
         this.form.name           = '';
@@ -431,14 +635,14 @@ export default {
       );
 
       this.form.name           = match || this.nameSearch.trim();
-      this.form.fetchConfigUrl = this.providerUrlMap[this.form.name] || '';
+      this.form.fetchConfigUrl = this.lookupProviderUrl(this.form.type, this.form.name);
       this.nameExists          = false;
     },
 
     selectName(name) {
       this.form.name           = name;
       this.nameSearch          = name;
-      this.form.fetchConfigUrl = this.providerUrlMap[name] || '';
+      this.form.fetchConfigUrl = this.lookupProviderUrl(this.form.type, name);
       this.showNameDropdown    = false;
       this.checkNameExists();
     },
@@ -448,7 +652,7 @@ export default {
       setTimeout(() => {
         this.showNameDropdown    = false;
         this.form.name           = this.nameSearch.trim();
-        this.form.fetchConfigUrl = this.providerUrlMap[this.form.name] || '';
+        this.form.fetchConfigUrl = this.lookupProviderUrl(this.form.type, this.form.name);
         if (this.form.name) {
           this.checkNameExists();
         }
@@ -470,7 +674,7 @@ export default {
         });
 
         this.nameExists = (response?.items || []).some(
-          (item) => item.spec?.type?.toLowerCase() === providerType.toLowerCase() &&
+          (item) => item.spec?.type === providerType &&
             item.spec?.name === providerName
         );
       } catch {
@@ -512,11 +716,11 @@ export default {
           },
           spec: {
             name:     name,
-            type:     this.form.type.toLowerCase().trim(),
+            type:     this.form.type,
             ...(this.form.version.trim() ? { version: this.form.version.trim() } : {}),
             ...(this.form.fetchConfigUrl.trim() ? { fetchConfig: { url: this.form.fetchConfigUrl.trim() } } : {}),
             features: { ...this.form.features },
-            ...(this.validVariables.length ? { variables: this.variablesMap } : {}),
+            variables: this.variablesMap,
           },
         };
 
@@ -557,11 +761,185 @@ export default {
         }
 
         this.$emit('save');
+
+        // After provider is created/updated, install ORC if applicable
+        if (this.showOrcSection && this.orcMethod === 'manifest' && this.orcManifestUrl.trim() && !this.isEdit) {
+          await this.installOrc();
+        }
       } catch (e) {
         this.error = e?.message || this.t('clusterstacks.capiProviders.errors.save');
       } finally {
         this.saving = false;
       }
+    },
+
+    /**
+     * Apply the ORC manifest – works like "kubectl apply -f <url>".
+     *
+     * 1. Download the manifest via Rancher's /meta/proxy/ (avoids CORS).
+     * 2. Split the multi-document YAML on "---".
+     * 3. For each document use Kubernetes **Server-Side Apply** (SSA):
+     *    PATCH with Content-Type: application/apply-patch+yaml
+     *    The K8s API parses the raw YAML server-side – no browser-side
+     *    YAML→JSON conversion needed.
+     */
+    async installOrc() {
+      this.orcProgress = this.t('clusterstacks.capiProviders.form.orcInstalling');
+      this.orcError    = '';
+
+      try {
+        // --- 1. Download manifest via Rancher proxy (same-origin → no CORS) ---
+        const manifestUrl = this.orcManifestUrl.trim();
+        const dlResp      = await fetch(`/meta/proxy/${ manifestUrl }`, {
+          credentials: 'same-origin',
+          headers:     { Accept: 'text/plain, application/x-yaml, */*' },
+        });
+
+        if (!dlResp.ok) {
+          throw new Error(`Download failed: HTTP ${ dlResp.status } ${ dlResp.statusText }`);
+        }
+
+        const yamlText = await dlResp.text();
+
+        // --- 2. Split multi-document YAML ---
+        const docs = yamlText.split(/^---$/m)
+          .map((d) => d.trim())
+          .filter((d) => d && !d.startsWith('#'));
+
+        let applied = 0;
+        const errors = [];
+
+        for (const doc of docs) {
+          // Extract only the fields needed to construct the API URL
+          const av = doc.match(/^apiVersion:\s*(.+)$/m);
+          const ki = doc.match(/^kind:\s*(.+)$/m);
+          const nm = doc.match(/^\s+name:\s*(.+)$/m);
+          const ns = doc.match(/^\s+namespace:\s*(.+)$/m);
+
+          if (!av || !ki || !nm) {
+            continue;
+          }
+
+          const apiVersion = av[1].trim();
+          const kind       = ki[1].trim();
+          const resName    = nm[1].trim();
+          const namespace  = ns ? ns[1].trim() : '';
+
+          // Build K8s API path – SSA targets the named resource directly
+          const apiBase = apiVersion.includes('/') ? `/apis/${ apiVersion }` : `/api/${ apiVersion }`;
+          const nsPath  = namespace ? `${ apiBase }/namespaces/${ namespace }` : apiBase;
+          const plural  = this.pluralize(kind);
+          const ssaUrl  = `${ nsPath }/${ plural }/${ resName }?fieldManager=clusterstacks-ui&force=true`;
+
+          // --- 3. Server-Side Apply (raw YAML, no parsing) ---
+          try {
+            await this.$store.dispatch('management/request', {
+              method:  'PATCH',
+              url:     ssaUrl,
+              data:    doc,
+              headers: { 'Content-Type': 'application/apply-patch+yaml' },
+            });
+            applied++;
+          } catch (e) {
+            const msg = `${ kind }/${ resName }: ${ e.message || e.statusText || e }`;
+
+            console.warn(`ORC: ${ msg }`, e); // eslint-disable-line no-console
+            errors.push(msg);
+          }
+        }
+
+        this.orcProgress = '';
+
+        if (errors.length) {
+          this.orcError = `ORC: ${ applied } applied, ${ errors.length } failed – ${ errors.slice(0, 3).join('; ') }`;
+        }
+      } catch (e) {
+        this.orcProgress = '';
+        this.orcError    = `${ this.t('clusterstacks.capiProviders.form.orcInstallError') }: ${ e.message || e }`;
+      }
+    },
+
+    /**
+     * Fetch available releases from the GitHub repo derived from fetchConfigUrl.
+     * Filters out pre-releases, drafts, and RC/alpha/beta tags.
+     */
+    async fetchProviderVersions() {
+      const gh = this.fetchConfigGitHub;
+
+      if (!gh) {
+        return;
+      }
+
+      this.providerVersionsLoading = true;
+      this.providerVersionsError   = '';
+      this.lastFetchedRepo         = `${ gh.owner }/${ gh.repo }`;
+
+      try {
+        const apiUrl = `https://api.github.com/repos/${ gh.owner }/${ gh.repo }/releases?per_page=100`;
+        const resp   = await fetch(apiUrl, {
+          headers: { Accept: 'application/vnd.github+json' },
+        });
+
+        if (!resp.ok) {
+          throw new Error(`GitHub API: HTTP ${ resp.status }`);
+        }
+
+        const releases = await resp.json();
+
+        // Filter: no drafts, no pre-releases, no RC/alpha/beta tags
+        this.providerVersions = releases
+          .filter((r) => !r.draft && !r.prerelease)
+          .map((r) => r.tag_name)
+          .filter((tag) => !/-(rc|alpha|beta|dev)/i.test(tag));
+      } catch (e) {
+        console.warn('Provider versions: failed to fetch:', e); // eslint-disable-line no-console
+        this.providerVersionsError = `${ this.t('clusterstacks.capiProviders.form.versionsError') }: ${ e.message || e }`;
+      } finally {
+        this.providerVersionsLoading = false;
+      }
+    },
+
+    /**
+     * When the user picks a version from the dropdown, update the fetchConfigUrl
+     * to point to that specific release instead of "latest".
+     */
+    onProviderVersionChange() {
+      const gh = this.fetchConfigGitHub;
+
+      if (!gh) {
+        return;
+      }
+
+      const url = this.form.fetchConfigUrl;
+      // Extract the asset filename from the current URL (e.g. "infrastructure-components.yaml")
+      const assetMatch = url.match(/\/download\/[^/]+\/(.+)$/) || url.match(/\/latest\/(.+)$/);
+      const asset      = assetMatch ? assetMatch[1] : '';
+
+      if (!asset) {
+        return;
+      }
+
+      if (!this.form.version) {
+        // Empty = latest
+        this.versionChangeInternal = true;
+        this.form.fetchConfigUrl = `https://github.com/${ gh.owner }/${ gh.repo }/releases/latest/${ asset }`;
+      } else {
+        this.versionChangeInternal = true;
+        this.form.fetchConfigUrl = `https://github.com/${ gh.owner }/${ gh.repo }/releases/download/${ this.form.version }/${ asset }`;
+      }
+    },
+
+    pluralize(kind) {
+      const k = kind.toLowerCase();
+
+      if (k.endsWith('s')) {
+        return k + 'es';
+      }
+      if (k.endsWith('y') && !k.endsWith('ey')) {
+        return k.slice(0, -1) + 'ies';
+      }
+
+      return k + 's';
     },
 
     t(key) {

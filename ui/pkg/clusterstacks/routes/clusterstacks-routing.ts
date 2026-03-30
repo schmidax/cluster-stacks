@@ -28,6 +28,14 @@ const routes: RouteConfig[] = [
     meta:      { product: PRODUCT_NAME },
   },
 
+  // Cluster detail
+  {
+    name:      ROUTES.CLUSTERS_DETAIL,
+    path:      `${CLUSTER_PREFIX}/clusters/detail`,
+    component: () => import(/* webpackChunkName: "clusterstacks-clusters-detail" */ '../pages/clusters/detail.vue'),
+    meta:      { product: PRODUCT_NAME },
+  },
+
   // ClusterStacks overview
   {
     name:      ROUTES.STACKS,
@@ -73,6 +81,14 @@ const routes: RouteConfig[] = [
     name:      ROUTES.OPENSTACK_RESOURCES,
     path:      `${CLUSTER_PREFIX}/openstack/resources`,
     component: () => import(/* webpackChunkName: "clusterstacks-openstack-resources" */ '../pages/openstack-projects/resources.vue'),
+    meta:      { product: PRODUCT_NAME },
+  },
+
+  // OpenStack Object Storage
+  {
+    name:      ROUTES.OPENSTACK_OBJECTSTORAGE,
+    path:      `${CLUSTER_PREFIX}/openstack/objectstorage`,
+    component: () => import(/* webpackChunkName: "clusterstacks-openstack-objectstorage" */ '../pages/openstack-projects/objectstorage.vue'),
     meta:      { product: PRODUCT_NAME },
   },
 

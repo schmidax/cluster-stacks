@@ -8,6 +8,7 @@ clusterstacks:
     openstackGroup: OpenStack
     openstackCredentials: Credentials
     openstackResources: Resources
+    openstackObjectstorage: Object Storage
     capiProviders: CAPI Provider
 
   dashboard:
@@ -28,6 +29,7 @@ clusterstacks:
     title: Clusters
     createBtn: Create Cluster
     noData: No clusters found.
+    deleteConfirm: "Delete cluster \"{name}\"? This cannot be undone."
     table:
       name: Name
       namespace: Namespace
@@ -35,49 +37,180 @@ clusterstacks:
       phase: Phase
       age: Age
       ready: Ready
+      state: State
+      provider: Provider
+      nodes: Nodes
+      controlPlane: Control Plane
+      workers: Workers
+      infraReady: Infra
+    actions:
+      viewDetail: View Details
+      downloadKubeconfig: Download Kubeconfig
+      explore: Explore
+      exploreNotImported: This cluster is not imported into Rancher and cannot be explored.
+      kubeconfigNotFound: Kubeconfig secret not found for this cluster.
+      kubeconfigError: Failed to download kubeconfig. The secret may not exist yet.
 
   clusterCreate:
     title: Create Cluster
     editTitle: Edit Cluster
+    selectStack: Select a ClusterStack to create a new cluster.
+    noStacks: No ClusterStacks found. Create a ClusterStack first.
+    changeStack: Change ClusterStack
+    update: Update Cluster
     tabs:
       general: General
-      openstack: OpenStack
+      image: Image
+      networking: Networking
+      controlPlane: Control Plane
+      workers: Worker Pools
+      bastion: Bastion
+      security: Security
+      oidc: OIDC
       etcd: ETCD Backup
     name: Cluster Name
     namespace: Namespace
     clusterClass: ClusterClass
     k8sVersion: Kubernetes Version
     k8sVersionPlaceholder: Select a Kubernetes version...
+    identity:
+      title: Identity / Credentials
+      secretName: Secret Name
+      cloudName: Cloud Name
+    image:
+      title: VM Image
+      imageName: Image Name
+      imageNamePlaceholder: Select or enter image name...
+      isOrc: Use ORC Image
+      isOrcHint: When enabled, imageName refers to an ORC image resource.
+      addVersion: Append K8s Version
+      addVersionHint: "Appends the Kubernetes version to the image name (e.g. ubuntu-capi-image-v1.33.6+rke2r1)."
     controlPlane:
       title: Control Plane
+      compute: Compute Settings
       replicas: Replicas
       flavor: VM Flavor
       flavorPlaceholder: Select a flavor...
+      rootDisk: Root Disk (GiB)
+      serverGroupID: Server Group ID
+      serverGroupIDPlaceholder: UUID (optional, for anti-affinity)
+      availabilityZones: Availability Zones
+      omitAZ: Omit Availability Zone
+      omitAZHint: Let Nova scheduler decide the AZ based on other scheduling constraints.
     worker:
       title: Workers
       replicas: Replicas
       flavor: VM Flavor
       flavorPlaceholder: Select a flavor...
+      rootDisk: Root Disk (GiB)
+      serverGroupID: Server Group ID
+      serverGroupIDPlaceholder: UUID (optional)
+      securityGroups: Security Groups
+    workerPools:
+      title: Worker Pools
+      addPool: Add Pool
+      noPoolsHint: No worker pools configured. Add a pool to provision worker nodes.
+      poolName: Pool Name
+      replicas: Replicas
+      overrides: Variable Overrides
+      blockDevices: Additional Block Devices
+      bdName: Device Name
+      bdSize: Size (GiB)
     bastion:
       title: Bastion Host
       enabled: Enable Bastion
       flavor: VM Flavor
       flavorPlaceholder: Select a flavor...
+      rootDisk: Root Disk (GiB)
+      serverGroupID: Server Group ID
+      serverGroupIDPlaceholder: UUID (optional)
     network:
       title: Network
       externalNetwork: External Network
       externalNetworkPlaceholder: Select external network...
-      imageName: VM Image
-      imageNamePlaceholder: Select VM image...
+      mtu: MTU
+      nodeCIDR: Node CIDR
+      dnsNameservers: DNS Nameservers
+      dnsHint: Comma-separated list of DNS nameserver IPs.
+      disableFloatingIP: Disable API Server Floating IP
+      cni: Container Network Interface
+      cniLabel: CNI Plugin
+    apiServer:
+      title: API Server
+      loadBalancer: Load Balancer Type
+      certSANs: Additional SANs
+      allowedCIDRs: Allowed CIDRs (Amphora)
+      allowedCIDRsHint: Restrict access to the K8s API. Ensure the management cluster outgoing IP is included.
+    security:
+      sshTitle: SSH Access
+      sshKeyName: SSH Key Name
+      sgTitle: Security Groups
+      securityGroups: Global Security Groups (names)
+      securityGroupIDs: Global Security Group IDs
+      workerSGs: Worker Security Groups (names)
+      workerSGIDs: Worker Security Group IDs
+      sgHint: Name-based groups are ignored when ID-based groups are set.
+    oidc:
+      title: OIDC Configuration
+      description: Configure OpenID Connect for cluster API server authentication.
+      clientID: Client ID
+      issuerURL: Issuer URL
+      usernameClaim: Username Claim
+      groupsClaim: Groups Claim
+      usernamePrefix: Username Prefix
+      groupsPrefix: Groups Prefix
     etcdBackup:
       title: ETCD Backup (S3)
       enabled: Enable ETCD Backup to S3
-      description: Automatically creates a Swift container and stores credentials for etcd backup.
-      containerName: Swift Container Name
+      description: Back up etcd data to an S3-compatible store (Swift). Select or create a container below.
       endpoint: S3 Endpoint
+      region: Region
+      bucket: Container / Bucket
+      bucketPlaceholder: Select or enter container name...
+      containerTitle: Swift Container
+      createContainer: Create Container
+      containerCreated: Container created successfully.
+      containerName: Swift Container Name
     save: Save Cluster
     cancel: Cancel
     validating: Validating quota...
+
+  clusterDetail:
+    generalInfo: General Information
+    statusInfo: Status
+    clusterClass: Cluster Class
+    created: Created
+    cpReady: Control Plane Ready
+    infraReady: Infrastructure Ready
+    cpReplicas: CP Replicas
+    workerReplicas: Worker Replicas (total)
+    workerPools: Worker Pools
+    controlPlaneDetail: Control Plane Details
+    conditions: Conditions
+    noConditions: No conditions available.
+    variables: Topology Variables
+    varName: Variable
+    varType: Type
+    varPreview: Value
+    noVariables: No variables set.
+    workerPoolsDetail: Worker Pool Details
+    noWorkerPools: No worker pools configured.
+    notFound: Cluster not found.
+    yamlTitle: Cluster YAML
+    tabs:
+      overview: Overview
+      variables: Variables
+      snapshots: Snapshots
+      yaml: YAML
+    snapshots:
+      title: ETCD Snapshots
+      description: View and manage etcd snapshots for this cluster. Snapshots are available for RKE2 downstream clusters.
+      backupConfig: ETCD Backup Configuration
+      enabled: Backup Enabled
+      takeSnapshot: Take Snapshot
+      snapshotWip: Creating and restoring snapshots will be available in a future Rancher version.
+      noData: No snapshots found for this cluster.
+      capiHint: For CAPI clusters, etcd backups are managed by RKE2 inside the workload cluster and stored in the configured S3/Swift bucket.
 
   stacks:
     title: ClusterStacks
@@ -130,16 +263,37 @@ clusterstacks:
   openstack:
     title: OpenStack Projects
     createBtn: Add Credentials
+    createProjectBtn: Create Project
+    createProjectTitle: Create New Project
+    projectNameLabel: Project Name
+    projectNamePlaceholder: my-project
+    projectOwnerLabel: Owner (optional)
+    projectOwnerPlaceholder: Search for a user...
+    projectMembersLabel: Members (optional)
+    addCredential: Add Credential
+    credentialCount: Credential(s)
     noData: No OpenStack credentials configured.
+    noCredentials: No credentials in this project yet.
+    deleteProject: Delete Project
+    noProjects: No cso- projects found. Create a project first.
+    inUse: in use
     credential:
       name: Name
       authUrl: Auth URL
       project: Project
+      osProject: OS Project
       region: Region
     credentials:
       title: OpenStack Credentials
       noProject: No Project
       deleteBlocked: Cannot delete – active clusters exist in this namespace
+    manageOwners: Manage Owners
+    moveCred:
+      title: Move Credential
+      message: "Move credential '{name}' to a different project."
+      targetProject: Target Project
+      selectProject: Select a project...
+      moveBtn: Move
     resources:
       title: Resources
       credential: Credential
@@ -204,6 +358,46 @@ clusterstacks:
         gigabytes: Disk
         snapshots: Snapshots
 
+  objectstorage:
+    title: Object Storage
+    noData: No OpenStack credentials configured.
+    loading: Loading Object Storage data…
+    credential: Credential
+    authUrl: Auth URL
+    osProject: OS Project
+    ec2Credentials: EC2 Credentials
+    noEc2: No EC2 credentials found for this project.
+    accessKey: Access Key
+    secretKey: Secret Key
+    containers: Containers
+    noContainers: No containers found.
+    containerName: Container Name
+    objects: Objects
+    size: Size
+    inUse: In Use
+    inUseByCluster: "Used by cluster \"{name}\""
+    actions: Actions
+    createContainer: Create Container
+    containerNamePlaceholder: new-container-name
+    deleteContainer: Delete Container
+    deleteContainerConfirm: "Delete container \"{name}\"? This cannot be undone."
+    cannotDelete: Cannot delete — container is used by a cluster.
+    createEc2: Create EC2 Credential
+    deleteEc2: Delete EC2 Credential
+    deleteEc2Confirm: "Delete EC2 Credential with access key \"{access}\"?"
+    showSecret: Show
+    hideSecret: Hide
+    copied: Copied!
+    expandAll: Expand All
+    collapseAll: Collapse All
+    errors:
+      loadContainers: Failed to load containers.
+      loadEc2: Failed to load EC2 credentials.
+      createContainer: Failed to create container.
+      deleteContainer: Failed to delete container.
+      createEc2: Failed to create EC2 credential.
+      deleteEc2: Failed to delete EC2 credential.
+
   credentialCreate:
     title: Add OpenStack Credentials
     editTitle: Edit OpenStack Credentials
@@ -230,6 +424,18 @@ clusterstacks:
     testSuccess: Connection successful
     testError: Connection failed
     uploadYaml: Upload clouds.yaml
+    forProject: "Project"
+
+  projectMembers:
+    title: Project Members
+    addMember: Add Member
+    removeMember: Remove member
+    noMembers: No members assigned to this project.
+    usernamePlaceholder: "Username"
+    roleOwner: Owner
+    roleMember: Member
+    roleReadOnly: Read-Only
+    add: Add
 
   quota:
     title: Quota Validation
@@ -278,8 +484,24 @@ clusterstacks:
       title: Install CSO
       helmRepo: Helm Repository URL
       helmRepoHint: "Default: oci://registry.scs.community/cluster-stacks/cso"
+      certManagerRepo: cert-manager Helm Repository URL
+      certManagerHint: "Default: https://charts.jetstack.io — cert-manager is required by CSO and will be installed automatically if missing."
       btn: Install
+      runtimeSDKMissing: "RuntimeSDK is not enabled on the Core provider (cluster-api). Please edit the cluster-api provider under CAPI Providers and enable RuntimeSDK before installing the CSO."
       error: Installation failed. Please check the Helm repository URL and your permissions.
+      repoSyncTimeout: The Helm repository did not finish syncing in time. Please check the repository URL and try again.
+      progress:
+        certManagerCheck: Checking if cert-manager is installed…
+        certManagerNs: Creating namespace cert-manager…
+        certManagerRepo: Registering cert-manager Helm repository…
+        certManagerSync: Waiting for cert-manager repository to sync…
+        certManagerInstall: Installing cert-manager…
+        certManagerWait: Waiting for cert-manager to become ready…
+        namespace: Creating namespace cso-system…
+        repo: Registering Helm repository…
+        sync: Waiting for Helm repository to sync (this may take a minute)…
+        chart: Installing Helm chart…
+        wait: Waiting for CSO to appear…
     pods:
       title: Pods
       noData: No pods found in cso-system.
@@ -346,8 +568,11 @@ clusterstacks:
       namespacePlaceholder: rancher-turtles-system
       namespaceHint: Namespace where the provider will be installed. Defaults to rancher-turtles-system.
       save: Install Provider
+      saveEdit: Save Provider
       features: Features
       variables: Extra Variables
+      runtimeSDKHint: Enable RuntimeSDK for ClusterClass feature gates. Recommended for cluster-stacks.
+      runtimeSDKWarning: "RuntimeSDK is not enabled. The Cluster Stack Operator (CSO) requires RuntimeSDK to be set on the Core provider (cluster-api)."
       optional: (optional)
       addVariable: Add Variable
       variableNamePlaceholder: Variable name
@@ -355,6 +580,15 @@ clusterstacks:
       nameSelectTypFirst: Select a Provider Type first
       nameAlreadyExists: A provider with this name already exists.
       loadingProviders: Loading provider list...
+      orcTitle: OpenStack Resource Controller (ORC)
+      orcHint: "The OpenStack Resource Controller is required for managing OpenStack resources. It will be installed alongside the infrastructure provider."
+      orcHelmNotAvailable: Helm installation is not yet available.
+      orcHelmFuture: coming soon
+      orcHelmPlaceholder: "Helm repository URL (not yet available)"
+      versionLatest: "(latest)"
+      versionsError: Failed to load versions from GitHub
+      orcInstalling: Installing OpenStack Resource Controller…
+      orcInstallError: Failed to install OpenStack Resource Controller
     logs:
       title: Provider Logs
       noPods: No pods found in namespace.

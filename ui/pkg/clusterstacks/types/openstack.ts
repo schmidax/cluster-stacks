@@ -204,6 +204,21 @@ export interface SwiftContainer {
   bytes: number;
 }
 
+// EC2 Credentials (Keystone)
+
+export interface EC2Credential {
+  id: string;
+  user_id: string;
+  project_id: string;
+  type: string;
+  access: string;
+  secret: string;
+  parsedBlob?: {
+    access?: string;
+    secret?: string;
+  };
+}
+
 // Keystone
 
 export interface OpenStackProject {

@@ -1,0 +1,27 @@
+// Ensure a small gap between icon and text inside all buttons.
+.btn > .icon,
+.btn > i.icon {
+  margin-right: 5px;
+}
+
+// Render the SCS logo as sidebar icon using CSS mask-image.
+// The mask uses the SVG shape; background-color: currentColor ensures the
+// icon always matches Rancher's global link colour and hover states.
+.icon.icon-scs-logo {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  -webkit-mask-image: url('./SCS_logo.svg');
+  mask-image: url('./SCS_logo.svg');
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+
+  &::before {
+    content: '' !important;
+  }
+}
