@@ -12,7 +12,7 @@ export const ROUTES = {
   STACKS:                 'clusterstacks-stacks',
   STACKS_CREATE:          'clusterstacks-stacks-create',
   CSO_MANAGEMENT:         'clusterstacks-cso-management',
-  OPENSTACK:              'clusterstacks-openstack',
+  OPENSTACK:              'clusterstacks-openstack', // route name stays, path changes
   OPENSTACK_CREATE:       'clusterstacks-openstack-create',
   OPENSTACK_RESOURCES:      'clusterstacks-openstack-resources',
   OPENSTACK_OBJECTSTORAGE:  'clusterstacks-openstack-objectstorage',
@@ -95,6 +95,7 @@ export function init($plugin: IPlugin, store: any) {
     icon:       'gear',
     weight:     80,
   });
+
 
   // OpenStack Projects menu item (credentials list)
   virtualType({

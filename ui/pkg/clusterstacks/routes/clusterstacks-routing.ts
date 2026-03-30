@@ -60,12 +60,19 @@ const routes: RouteConfig[] = [
     meta:      { product: PRODUCT_NAME },
   },
 
-  // OpenStack projects list
+
+  // OpenStack credentials list (new canonical route)
   {
     name:      ROUTES.OPENSTACK,
-    path:      `${CLUSTER_PREFIX}/openstack`,
-    component: () => import(/* webpackChunkName: "clusterstacks-openstack" */ '../pages/openstack-projects/index.vue'),
+    path:      `${CLUSTER_PREFIX}/openstack/credentials`,
+    component: () => import(/* webpackChunkName: "clusterstacks-openstack-credentials" */ '../pages/openstack-projects/credentials.vue'),
     meta:      { product: PRODUCT_NAME },
+  },
+
+  // Redirect /openstack to /openstack/credentials
+  {
+    path:      `${CLUSTER_PREFIX}/openstack`,
+    redirect:  `${CLUSTER_PREFIX}/openstack/credentials`,
   },
 
   // OpenStack credential create
