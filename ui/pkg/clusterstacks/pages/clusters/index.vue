@@ -1,17 +1,23 @@
 <template>
   <div class="clusters-page">
-    <!-- Header -->
-    <div class="page-header">
-      <h1>{{ t('clusterstacks.clusters.title') }}</h1>
-      <div class="header-actions">
-        <button class="btn role-primary" @click="createCluster">
-          {{ t('clusterstacks.clusters.createBtn') }}
-        </button>
-        <button class="btn role-secondary" @click="load">
-          <i class="icon icon-refresh" /> {{ t('clusterstacks.common.refresh') }}
-        </button>
+    <header class="with-subheader">
+      <div class="title">
+        <h1 class="m-0">{{ t('clusterstacks.clusters.title') }}</h1>
       </div>
-    </div>
+      <div class="sub-header">
+        <!-- Slot content -->
+      </div>
+      <div class="actions-container">
+        <div class="actions">
+          <button class="btn role-primary mr-10" @click="createCluster">
+            {{ t('clusterstacks.clusters.createBtn') }}
+          </button>
+          <button class="btn role-secondary" @click="load">
+            <i class="icon icon-refresh" /> {{ t('clusterstacks.common.refresh') }}
+          </button>
+        </div>
+      </div>
+    </header>
 
     <div v-if="loading" class="loading-placeholder">
       <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
@@ -57,6 +63,7 @@
         <a href="#" class="cluster-link" @click.prevent="viewCluster(row)">
           {{ row.name }}
         </a>
+        <span v-if="row.fleetManaged" class="fleet-managed-badge" :title="FLEET_MANAGED_TOOLTIP">{{ FLEET_MANAGED_TOOLTIP }}</span>
         <span class="text-muted cluster-namespace">{{ row.namespace }}</span>
       </template>
 
@@ -92,14 +99,6 @@
         <span v-else class="text-muted">—</span>
       </template>
 
-      <!-- Infrastructure Ready -->
-      <template #cell:infraReady="{ row }">
-        <i
-          class="icon"
-          :class="row.infraReady ? 'icon-checkmark text-success' : 'icon-dot-open text-muted'"
-        />
-      </template>
-
       <!-- Age -->
       <template #cell:age="{ row }">
         {{ row.age }}
@@ -119,6 +118,8 @@
 import SortableTable from '@shell/components/SortableTable';
 import { BadgeState } from '@rancher/components';
 import { ROUTES } from '../../config/clusterstacks';
+import { getCapiReplicaStatus } from '../../utils/capi-status';
+import { FLEET_MANAGED_TOOLTIP, isFleetManagedResource } from '../../utils/fleet-management';
 
 export default {
   name: 'ClustersIndex',
@@ -127,14 +128,19 @@ export default {
 
   data() {
     return {
-      clusters:       [],
-      loading:        false,
-      error:          null,
-      refreshTimer:   null,
+      clusters:             [],
+      loading:              false,
+      error:                null,
+      refreshTimer:         null,
+      currentUserIsAdmin:   false,
     };
   },
 
   computed: {
+    FLEET_MANAGED_TOOLTIP() {
+      return FLEET_MANAGED_TOOLTIP;
+    },
+
     headers() {
       return [
         {
@@ -179,13 +185,6 @@ export default {
           align:     'center',
         },
         {
-          name:      'infraReady',
-          labelKey:  'clusterstacks.clusters.table.infraReady',
-          value:     'infraReady',
-          width:     80,
-          align:     'center',
-        },
-        {
           name:      'age',
           labelKey:  'clusterstacks.clusters.table.age',
           value:     'ageSort',
@@ -210,10 +209,12 @@ export default {
 
       return (this.clusters || []).map((c) => {
         const topo = c.spec?.topology;
-
-        // Count worker pools
-        const mds = topo?.workers?.machineDeployments || [];
-        const workerDesired = mds.reduce((sum, md) => sum + (md.replicas || 0), 0);
+        const status = c.status || {};
+        const replicaStatus = getCapiReplicaStatus(c);
+        const cpDesired = replicaStatus.cpDesired;
+        const cpReady = replicaStatus.cpReady;
+        const workerDesired = replicaStatus.workerDesired;
+        const workerReady = replicaStatus.workerReady;
 
         // Parse creation timestamp for age display
         const created = c.metadata?.creationTimestamp ? new Date(c.metadata.creationTimestamp) : null;
@@ -223,19 +224,19 @@ export default {
           id:            `${ c.metadata.namespace }/${ c.metadata.name }`,
           name:          c.metadata.name,
           namespace:     c.metadata.namespace,
+          fleetManaged:  isFleetManagedResource(c),
           version:       topo?.version || '',
-          clusterClass:  topo?.class || '',
-          phase:         c.status?.phase || 'Unknown',
-          cpDesired:     topo?.controlPlane?.replicas || 0,
-          cpReady:       c.status?.controlPlaneReady ? (topo?.controlPlane?.replicas || 0) : 0,
+          clusterClass:  topo?.classRef?.name || topo?.class || '',
+          phase:         status?.phase || 'Unknown',
+          cpDesired,
+          cpReady,
           workerDesired,
-          workerReady:   c.status?.infrastructureReady ? workerDesired : 0,
-          infraReady:    !!c.status?.infrastructureReady,
-          provider:      self.extractProvider(topo?.class),
+          workerReady,
+          provider:      self.extractProvider(topo?.classRef?.name || topo?.class),
           age:           self.formatAge(ageMs),
           ageSort:       created ? created.toISOString() : '',
-          cpInfo:        `${ c.status?.controlPlaneReady ? (topo?.controlPlane?.replicas || 0) : 0 }/${ topo?.controlPlane?.replicas || 0 }`,
-          workerInfo:    `${ c.status?.infrastructureReady ? workerDesired : 0 }/${ workerDesired }`,
+          cpInfo:        `${ cpReady }/${ cpDesired }`,
+          workerInfo:    `${ workerReady }/${ workerDesired }`,
           raw:           c,
 
           // Rancher SortableTable row actions — these appear in the kebab menu
@@ -255,19 +256,21 @@ export default {
               icon:     'icon-download',
               action:   'downloadKubeconfig',
             },
-            { divider: true },
-            {
-              label:   self.t('clusterstacks.common.edit'),
-              icon:    'icon-edit',
-              action:  'editCluster',
-            },
-            { divider: true },
-            {
-              label:   self.t('clusterstacks.common.delete'),
-              icon:    'icon-trash',
-              action:  'deleteCluster',
-              bulkable: false,
-            },
+            ...(isFleetManagedResource(c) ? [] : [
+              { divider: true },
+              {
+                label:   self.t('clusterstacks.common.edit'),
+                icon:    'icon-edit',
+                action:  'editCluster',
+              },
+              { divider: true },
+              {
+                label:   self.t('clusterstacks.common.delete'),
+                icon:    'icon-trash',
+                action:  'deleteCluster',
+                bulkable: false,
+              },
+            ]),
           ],
         };
 
@@ -277,13 +280,13 @@ export default {
         row.editCluster = () => self.editCluster(row);
         row.deleteCluster = () => self.deleteCluster(row);
         row.downloadKubeconfig = () => self.downloadKubeconfig(row);
-
         return row;
       });
     },
   },
 
   async mounted() {
+    this.loadCurrentUser();
     await this.load();
     this.refreshTimer = setInterval(() => this.load(true), 15000);
   },
@@ -295,6 +298,12 @@ export default {
   },
 
   methods: {
+    loadCurrentUser() {
+      const schema = this.$store.getters['management/schemaFor']('management.cattle.io.setting');
+
+      this.currentUserIsAdmin = !!(schema?.resourceMethods || []).includes('PUT');
+    },
+
     async load(silent = false) {
       if (!silent) {
         this.loading = true;
@@ -302,12 +311,25 @@ export default {
       this.error = null;
 
       try {
-        const result = await this.$store.dispatch('management/findAll', {
-          type: 'cluster.x-k8s.io.cluster',
-          opt:  { force: true },
-        });
+        // Strategy 1: cluster-wide findAll via Steve (works for admin)
+        let result = [];
 
-        this.clusters = result || [];
+        try {
+          result = await this.$store.dispatch('management/findAll', {
+            type: 'cluster.x-k8s.io.cluster',
+            opt:  { force: true },
+          }) || [];
+        } catch {
+          // Non-admin users may not have cluster-wide list permission
+        }
+
+        // Strategy 2: namespace-scoped queries for accessible cso-* namespaces
+        if (!result.length) {
+          result = await this.loadClustersNamespaceScoped();
+        }
+
+        // Hide local cluster from non-admin users
+        this.clusters = this.filterLocalCluster(result);
       } catch (e) {
         if (!silent) {
           this.error = this.t('clusterstacks.errors.loadClusters');
@@ -317,6 +339,67 @@ export default {
           this.loading = false;
         }
       }
+    },
+
+    async loadClustersNamespaceScoped() {
+      const clusters = [];
+
+      // Discover accessible cso-* namespaces
+      let namespaces = [];
+
+      try {
+        const nsResp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    '/api/v1/namespaces',
+        });
+
+        namespaces = (nsResp?.items || [])
+          .map((ns) => ns.metadata?.name)
+          .filter((ns) => ns && ns.startsWith('cso-') && ns !== 'cso-system');
+      } catch {
+        // Try Steve namespace list as fallback
+        try {
+          const nsResult = await this.$store.dispatch('management/findAll', {
+            type: 'namespace',
+            opt:  { force: true },
+          });
+
+          namespaces = (nsResult || [])
+            .map((ns) => ns.metadata?.name || ns.id)
+            .filter((ns) => ns && ns.startsWith('cso-') && ns !== 'cso-system');
+        } catch {
+          // no namespace access
+        }
+      }
+
+      // Query CAPI clusters per namespace
+      const results = await Promise.allSettled(
+        namespaces.map(async(ns) => {
+          const resp = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/apis/cluster.x-k8s.io/v1beta2/namespaces/${ ns }/clusters`,
+          });
+
+          return resp?.items || [];
+        }),
+      );
+
+      for (const r of results) {
+        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+          clusters.push(...r.value);
+        }
+      }
+
+      return clusters;
+    },
+
+    filterLocalCluster(clusters) {
+      // Hide local cluster from non-admin users
+      if (this.currentUserIsAdmin) {
+        return clusters;
+      }
+
+      return clusters.filter((c) => c.metadata?.name !== 'local');
     },
 
     // ── Navigation ──────────────────────────────────────
@@ -332,6 +415,10 @@ export default {
     },
 
     editCluster(row) {
+      if (row?.fleetManaged) {
+        return;
+      }
+
       this.$router.push({
         name:  ROUTES.CLUSTERS_CREATE,
         query: { namespace: row.namespace, name: row.name },
@@ -341,13 +428,24 @@ export default {
     async exploreCluster(row) {
       // Try to find the Rancher management cluster that corresponds to this CAPI cluster
       try {
-        const mgmtClusters = await this.$store.dispatch('management/findAll', {
-          type: 'management.cattle.io.cluster',
-          opt:  { force: true },
-        });
+        let mgmtClusters;
+
+        try {
+          const resp = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    '/apis/management.cattle.io/v3/clusters',
+          });
+
+          mgmtClusters = resp?.items || [];
+        } catch {
+          mgmtClusters = await this.$store.dispatch('management/findAll', {
+            type: 'management.cattle.io.cluster',
+            opt:  { force: true },
+          }) || [];
+        }
 
         // Match by label, annotation, or display name
-        const match = (mgmtClusters || []).find((mc) => {
+        const match = mgmtClusters.find((mc) => {
           const labels = mc.metadata?.labels || {};
           const annotations = mc.metadata?.annotations || {};
           const name = mc.spec?.displayName || mc.metadata?.name || '';
@@ -376,6 +474,10 @@ export default {
     },
 
     async deleteCluster(row) {
+      if (row?.fleetManaged) {
+        return;
+      }
+
       const msg = this.t('clusterstacks.clusters.deleteConfirm', { name: row.name });
 
       if (!window.confirm(msg)) {
@@ -385,7 +487,7 @@ export default {
       try {
         await this.$store.dispatch('management/request', {
           method: 'DELETE',
-          url:    `/apis/cluster.x-k8s.io/v1beta1/namespaces/${ row.namespace }/clusters/${ row.name }`,
+          url:    `/apis/cluster.x-k8s.io/v1beta2/namespaces/${ row.namespace }/clusters/${ row.name }`,
         });
         await this.load();
       } catch (e) {
@@ -410,7 +512,7 @@ export default {
         if (!kubeconfigB64) {
           // Try via CAPI API directly
           const resp = await this.$store.dispatch('management/request', {
-            url: `/apis/cluster.x-k8s.io/v1beta1/namespaces/${ ns }/clusters/${ row.name }/kubeconfig`,
+            url: `/apis/cluster.x-k8s.io/v1beta2/namespaces/${ ns }/clusters/${ row.name }/kubeconfig`,
           });
 
           if (resp) {
@@ -533,17 +635,25 @@ export default {
   padding: 20px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+header {
   margin-bottom: 20px;
 }
 
-.header-actions {
-  display: flex;
-  gap: 8px;
+.title {
   align-items: center;
+  display: flex;
+}
+
+header.with-subheader {
+  grid-template-areas:
+    'type-banner type-banner'
+    'title actions'
+    'sub-header sub-header'
+    'state-banner state-banner';
+}
+
+.sub-header {
+  grid-area: sub-header;
 }
 
 .loading-placeholder,
@@ -565,6 +675,18 @@ export default {
   display: block;
   font-size: 0.85em;
   line-height: 1.4;
+}
+
+.fleet-managed-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f59e0b;
+  color: #1c1100;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 // ── Version label ─────────────────────────────────────

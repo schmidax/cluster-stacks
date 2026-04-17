@@ -16,20 +16,41 @@
       <div v-else class="modal-body">
         <!-- Existing members -->
         <div v-if="members.length" class="members-list">
-          <div v-for="member in members" :key="member.id" class="member-row">
-            <div class="member-info">
-              <span class="member-name">{{ member.displayName }}</span>
-              <span class="member-role">{{ member.roleTemplateName }}</span>
-            </div>
-            <button
-              class="btn btn-sm role-link member-remove-btn"
-              :disabled="saving"
-              :title="t('clusterstacks.projectMembers.removeMember')"
-              @click="removeMember(member)"
-            >
-              <i class="icon icon-trash" />
-            </button>
-          </div>
+          <SortableTable
+            :rows="members"
+            :headers="memberHeaders"
+            :search="false"
+            :paging="false"
+            :table-actions="false"
+            :row-actions="false"
+            key-field="id"
+            default-sort-by="displayName"
+          >
+            <template #cell:principal="{row}">
+              <div class="member-principal-cell">
+                <Principal
+                  v-if="row.principalId || row.groupPrincipalId"
+                  :value="row.principalId || row.groupPrincipalId"
+                  :use-muted="false"
+                />
+                <span v-else class="member-name">{{ row.displayName }}</span>
+                <i v-if="row._saving" class="icon icon-spinner icon-spin member-spinner" />
+              </div>
+            </template>
+            <template #cell:role="{row}">
+              <span class="member-role">{{ row.roleLabel }}</span>
+            </template>
+            <template #cell:actions="{row}">
+              <button
+                class="btn btn-sm role-link member-remove-btn"
+                :disabled="saving"
+                :title="t('clusterstacks.projectMembers.removeMember')"
+                @click="removeMember(row)"
+              >
+                <i class="icon icon-trash" />
+              </button>
+            </template>
+          </SortableTable>
         </div>
         <div v-else class="no-members">
           {{ t('clusterstacks.projectMembers.noMembers') }}
@@ -46,17 +67,7 @@
               @input="newMemberName = $event"
               @select="onUserSelected"
             />
-            <select v-model="newMemberRole" class="form-select role-select" :disabled="saving">
-              <option value="project-owner">
-                {{ t('clusterstacks.projectMembers.roleOwner') }}
-              </option>
-              <option value="project-member">
-                {{ t('clusterstacks.projectMembers.roleMember') }}
-              </option>
-              <option value="read-only">
-                {{ t('clusterstacks.projectMembers.roleReadOnly') }}
-              </option>
-            </select>
+            <span class="member-role add-member-role-fixed">{{ t('clusterstacks.projectMembers.roleOwner') }}</span>
             <button
               class="btn btn-sm role-primary"
               :disabled="!newMemberPrincipalId || saving"
@@ -77,11 +88,19 @@
 
 <script>
 import UserSearchInput from './UserSearchInput.vue';
+import SortableTable from '@shell/components/SortableTable';
+import Principal from '@shell/components/auth/Principal';
+
+const CAPI_ROLE_TEMPLATE = 'clusterstacks-capi-access';
 
 export default {
   name: 'ProjectMembersDialog',
 
-  components: { UserSearchInput },
+  components: {
+    Principal,
+    SortableTable,
+    UserSearchInput,
+  },
 
   props: {
     isOpen: {
@@ -103,17 +122,42 @@ export default {
   data() {
     return {
       members:              [],
+      capiBindings:         [],
       userMap:              {},
       loading:              false,
       saving:               false,
       error:                '',
       newMemberName:        '',
       newMemberPrincipalId: '',
-      newMemberRole:        'project-owner',
+      newMemberPrincipalType: '',
     };
   },
 
   computed: {
+    memberHeaders() {
+      return [
+        {
+          name:  'principal',
+          label: 'User',
+          value: 'displayName',
+          width: '50%',
+        },
+        {
+          name:  'role',
+          label: 'Role',
+          value: 'roleLabel',
+          width: '35%',
+        },
+        {
+          name:     'actions',
+          label:    '',
+          value:    'id',
+          width:    '15%',
+          sort:     false,
+        },
+      ];
+    },
+
     shortProjectId() {
       if (!this.projectId) {
         return '';
@@ -134,6 +178,30 @@ export default {
   },
 
   methods: {
+    isClusterManagementRole(roleTemplateName) {
+      const role = String(roleTemplateName || '').toLowerCase();
+
+      return role === 'project-owner' || role === 'project-member';
+    },
+
+    roleLabel(roleTemplateName) {
+      const role = String(roleTemplateName || '').toLowerCase();
+
+      if (role === 'project-owner') {
+        return this.t('clusterstacks.projectMembers.roleOwner');
+      }
+
+      if (role === 'project-member') {
+        return this.t('clusterstacks.projectMembers.roleMember');
+      }
+
+      if (role === 'read-only') {
+        return this.t('clusterstacks.projectMembers.roleReadOnly');
+      }
+
+      return roleTemplateName || this.t('clusterstacks.projectMembers.roleOwner');
+    },
+
     async loadMembers() {
       this.loading = true;
       this.error   = '';
@@ -148,21 +216,25 @@ export default {
           opt:  { force: true },
         });
 
-        const filtered = (all || []).filter(
+        const allProjectBindings = (all || []).filter(
           (b) => b.projectName === this.projectId
               || b.metadata?.namespace === this.shortProjectId
               || (b.projectName || '').endsWith(`:${this.shortProjectId}`)
         );
+
+        // Separate auto-managed CAPI role bindings from user-visible bindings
+        this.capiBindings = allProjectBindings.filter((b) => b.roleTemplateName === CAPI_ROLE_TEMPLATE);
+        const filtered = allProjectBindings.filter((b) => b.roleTemplateName !== CAPI_ROLE_TEMPLATE);
 
         // Resolve principal display names via Rancher principals API
         await this.resolvePrincipals(filtered);
 
         this.members = filtered.map((b) => {
           const userName = b.userName || '';
-          console.error(b.userPrincipalName);
           const principalId = b.userPrincipalName || '';
-          const groupName = b.groupPrincipalName
-            ? this.extractPrincipalDisplayName(b.groupPrincipalName)
+          const groupPrincipalId = b.groupPrincipalName || '';
+          const groupName = groupPrincipalId
+            ? (this.userMap[groupPrincipalId] || this.extractPrincipalDisplayName(groupPrincipalId))
             : '';
           // Resolve: prefer principal-based friendly name, then userMap, then raw userName
           const principalFriendly = principalId ? this.extractPrincipalDisplayName(principalId) : '';
@@ -178,8 +250,11 @@ export default {
             namespace:        b.metadata?.namespace,
             name:             b.metadata?.name,
             userName,
+            principalId,
+            groupPrincipalId,
             displayName,
             roleTemplateName: b.roleTemplateName || '',
+            roleLabel:        this.roleLabel(b.roleTemplateName || ''),
             raw:              b,
           };
         });
@@ -239,8 +314,9 @@ export default {
     },
 
     onUserSelected(user) {
-      this.newMemberName        = user.displayName || user.loginName || '';
-      this.newMemberPrincipalId = user.id || '';
+      this.newMemberName         = user.displayName || user.loginName || '';
+      this.newMemberPrincipalId   = user.id || '';
+      this.newMemberPrincipalType = user.principalType || '';
     },
 
     extractPrincipalDisplayName(principalId) {
@@ -265,27 +341,28 @@ export default {
     },
 
     async resolvePrincipals(bindings) {
-      // Resolve display names for user principals via Rancher principals API
+      // Resolve display names for ALL external principals (users AND groups)
       const toResolve = new Map();
 
       for (const b of (bindings || [])) {
-        const pid = b.userPrincipalName || '';
+        const pids = [
+          b.userPrincipalName || '',
+          b.groupPrincipalName || '',
+        ].filter((pid) => pid && !pid.startsWith('local://'));
 
-        if (!pid || pid.startsWith('local://') || !/_user:\/\//.test(pid)) {
-          continue;
-        }
+        for (const pid of pids) {
+          const friendly = this.extractPrincipalDisplayName(pid);
+          const current = this.userMap[pid];
+          const GENERIC_NAMES = ['default admin', 'admin'];
 
-        const friendly = this.extractPrincipalDisplayName(pid);
-        const current = this.userMap[pid];
-        const GENERIC_NAMES = ['default admin', 'admin'];
+          const needsResolve = !current
+            || current === friendly
+            || current === pid
+            || GENERIC_NAMES.includes((current || '').toLowerCase());
 
-        const needsResolve = !current
-          || current === friendly
-          || current === pid
-          || GENERIC_NAMES.includes((current || '').toLowerCase());
-
-        if (needsResolve) {
-          toResolve.set(pid, friendly);
+          if (needsResolve) {
+            toResolve.set(pid, friendly);
+          }
         }
       }
 
@@ -307,15 +384,23 @@ export default {
 
       const results = await Promise.allSettled(
         [...byLoginName.entries()].map(async([loginName, pids]) => {
-          const resp = await this.$store.dispatch('management/request', {
-            method: 'POST',
-            url:    '/v3/principals?action=search',
-            data:   { name: loginName },
-          });
+          let items = null;
 
-          const items = Array.isArray(resp) ? resp : (resp?.data || []);
+          // Use the rancher (Norman v3) store for principal search
+          try {
+            const res = await this.$store.dispatch('rancher/collectionAction', {
+              type:       'principal',
+              actionName: 'search',
+              opt:        { url: '/v3/principals?action=search' },
+              body:       { name: loginName },
+            });
 
-          return { loginName, pids, items };
+            items = Array.isArray(res) ? res : (res?.data || []);
+          } catch {
+            // silent
+          }
+
+          return { loginName, pids, items: items || [] };
         }),
       );
 
@@ -340,17 +425,25 @@ export default {
           }
 
           if (!match) {
+            const isGroupPid = /_group:\/\//.test(pid);
+
             match = items.find(
-              (p) => (p.loginName || '').toLowerCase() === loginName.toLowerCase()
-                  && (p.principalType === 'user' || /_user/.test(p.id || '')),
+              (p) => (p.loginName || p.name || '').toLowerCase() === loginName.toLowerCase()
+                  && (isGroupPid
+                    ? (p.principalType === 'group' || /_group/.test(p.id || ''))
+                    : (p.principalType === 'user' || /_user/.test(p.id || ''))),
             );
           }
 
           if (match) {
-            const resolvedLogin = match.loginName || loginName;
+            const isGroup = /_group:\/\//.test(pid);
+            const resolvedLogin = match.loginName || match.name || loginName;
             const fullName = match.displayName || match.name || '';
 
-            if (fullName && fullName !== resolvedLogin) {
+            if (isGroup) {
+              updatedMap[pid] = fullName || resolvedLogin;
+              changed = true;
+            } else if (fullName && fullName !== resolvedLogin) {
               updatedMap[pid] = `${ fullName } (${ resolvedLogin })`;
               changed = true;
             }
@@ -371,14 +464,37 @@ export default {
       this.saving = true;
       this.error  = '';
 
+      // Add optimistic placeholder member immediately
+      const optimisticId = `_pending_${ Date.now() }`;
+      const optimisticMember = {
+        id:               optimisticId,
+        displayName:      this.newMemberName || this.newMemberPrincipalId,
+        principalId:      this.newMemberPrincipalType === 'group' ? '' : this.newMemberPrincipalId,
+        groupPrincipalId: this.newMemberPrincipalType === 'group' ? this.newMemberPrincipalId : '',
+        roleTemplateName: 'project-owner',
+        roleLabel:        this.roleLabel('project-owner'),
+        userName:         '',
+        _saving:          true,
+      };
+
+      this.members.push(optimisticMember);
+
       try {
         // Rancher v3 expects projectId in colon format (e.g. "local:p-xxxxx")
+        const isGroup = this.newMemberPrincipalType === 'group'
+          || /_group:\/\//.test(this.newMemberPrincipalId);
+
         const body = {
-          type:             'projectRoleTemplateBinding',
-          projectId:        this.projectId,
-          roleTemplateId:   this.newMemberRole,
-          userPrincipalId:  this.newMemberPrincipalId,
+          type:           'projectRoleTemplateBinding',
+          projectId:      this.projectId,
+          roleTemplateId: 'project-owner',
         };
+
+        if (isGroup) {
+          body.groupPrincipalId = this.newMemberPrincipalId;
+        } else {
+          body.userPrincipalId = this.newMemberPrincipalId;
+        }
 
         await this.$store.dispatch('management/request', {
           method: 'POST',
@@ -386,11 +502,24 @@ export default {
           data:   body,
         });
 
-        this.newMemberName        = '';
-        this.newMemberPrincipalId = '';
+        if (this.isClusterManagementRole('project-owner')) {
+          // Auto-assign CAPI access role for editable project members only.
+          await this.ensureCapiBinding(body);
+        }
+
+        this.newMemberName         = '';
+        this.newMemberPrincipalId  = '';
+        this.newMemberPrincipalType = '';
+        // Reload to get proper binding metadata for the newly added member
         await this.loadMembers();
         this.$emit('update');
       } catch (e) {
+        // Remove the optimistic placeholder on failure
+        const idx = this.members.findIndex((m) => m.id === optimisticId);
+
+        if (idx !== -1) {
+          this.members.splice(idx, 1);
+        }
         this.error = e?.message || e?.data?.message || String(e);
       } finally {
         this.saving = false;
@@ -400,6 +529,10 @@ export default {
     async removeMember(member) {
       this.saving = true;
       this.error  = '';
+
+      // Remove from local array immediately for instant feedback
+      const idx = this.members.findIndex((m) => m.id === member.id);
+      const removed = idx !== -1 ? this.members.splice(idx, 1)[0] : null;
 
       try {
         const ns   = member.namespace || member.raw?.metadata?.namespace;
@@ -417,12 +550,315 @@ export default {
           });
         }
 
-        await this.loadMembers();
+        // Also remove auto-managed CAPI binding for this member
+        await this.removeCapiBindingFor(
+          member.raw?.userPrincipalName || '',
+          member.raw?.groupPrincipalName || '',
+        );
+
         this.$emit('update');
       } catch (e) {
+        // Re-insert the member on failure so the UI stays consistent
+        if (removed && idx !== -1) {
+          this.members.splice(idx, 0, removed);
+        }
         this.error = e?.message || e?.data?.message || String(e);
       } finally {
         this.saving = false;
+      }
+    },
+
+    async ensureCapiBinding({ userPrincipalId, groupPrincipalId }) {
+      try {
+        const exists = this.capiBindings.some((b) =>
+          (userPrincipalId && b.userPrincipalName === userPrincipalId)
+          || (groupPrincipalId && b.groupPrincipalName === groupPrincipalId)
+        );
+
+        if (exists) {
+          return;
+        }
+
+        const data = {
+          type:           'projectRoleTemplateBinding',
+          projectId:      this.projectId,
+          roleTemplateId: CAPI_ROLE_TEMPLATE,
+        };
+
+        if (userPrincipalId) {
+          data.userPrincipalId = userPrincipalId;
+        }
+        if (groupPrincipalId) {
+          data.groupPrincipalId = groupPrincipalId;
+        }
+
+        await this.$store.dispatch('management/request', {
+          method: 'POST',
+          url:    '/v3/projectroletemplatebindings',
+          data,
+        });
+      } catch {
+        // RoleTemplate may not be installed — silent
+      }
+    },
+
+    async removeCapiBindingFor(principalId, groupPrincipalId) {
+      const capiBinding = this.capiBindings.find((b) =>
+        (principalId && b.userPrincipalName === principalId)
+        || (groupPrincipalId && b.groupPrincipalName === groupPrincipalId)
+      );
+
+      if (!capiBinding) {
+        return;
+      }
+
+      try {
+        if (capiBinding.links?.remove) {
+          await this.$store.dispatch('management/request', {
+            method: 'DELETE',
+            url:    capiBinding.links.remove,
+          });
+        } else {
+          const ns   = capiBinding.metadata?.namespace;
+          const name = capiBinding.metadata?.name;
+
+          await this.$store.dispatch('management/request', {
+            method: 'DELETE',
+            url:    `/v3/projectRoleTemplateBindings/${ ns }:${ name }`,
+          });
+        }
+      } catch {
+        // silent
+      }
+    },
+
+    /**
+     * Find management clusters imported from CAPI clusters in the project's
+     * namespaces and create/remove ClusterRoleTemplateBindings so that
+     * project members can access these clusters from the Rancher dashboard.
+     */
+    async syncClusterAccessBindings({ userPrincipalId, groupPrincipalId, userName }, action) {
+      try {
+        // Resolve the project's namespaces
+        const shortId = this.shortProjectId;
+
+        if (!shortId) {
+          return;
+        }
+
+        // Find CAPI clusters in the project's namespace(s)
+        let mgmtClusters;
+
+        try {
+          const resp = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    '/apis/management.cattle.io/v3/clusters',
+          });
+
+          mgmtClusters = resp?.items || [];
+        } catch {
+          mgmtClusters = await this.$store.dispatch('management/findAll', {
+            type: 'management.cattle.io.cluster',
+            opt:  { force: true },
+          }) || [];
+        }
+
+        // Find management clusters whose CAPI source is in this project's namespace
+        // The namespace = shortProjectId pattern matches project namespaces created
+        // by the extension (e.g., "proj-abc" namespace for project "local:proj-abc")
+        const projectNamespaces = await this.getProjectNamespaces(shortId);
+        const matchingClusters = mgmtClusters.filter((mc) => {
+          const labels = mc.metadata?.labels || {};
+          const annotations = mc.metadata?.annotations || {};
+          const displayName = mc.spec?.displayName || '';
+
+          // Check if any project namespace has a CAPI cluster matching this mgmt cluster
+          return projectNamespaces.some((ns) => {
+            return labels['cluster.x-k8s.io/cluster-name']
+              || annotations['cluster.x-k8s.io/cluster-name']
+              || displayName;
+          });
+        });
+
+        // For matching CAPI clusters, find the ones whose displayName or labels
+        // reference a cluster in one of our project namespaces
+        const relevantClusters = [];
+
+        for (const mc of matchingClusters) {
+          const capiName = mc.metadata?.labels?.['cluster.x-k8s.io/cluster-name']
+            || mc.metadata?.annotations?.['cluster.x-k8s.io/cluster-name']
+            || mc.spec?.displayName
+            || '';
+
+          if (!capiName) {
+            continue;
+          }
+
+          // Verify the CAPI cluster exists in one of our project namespaces
+          for (const ns of projectNamespaces) {
+            try {
+              await this.$store.dispatch('management/request', {
+                method: 'GET',
+                url:    `/apis/cluster.x-k8s.io/v1beta2/namespaces/${ ns }/clusters/${ capiName }`,
+              });
+              relevantClusters.push(mc);
+              break;
+            } catch {
+              // not in this namespace
+            }
+          }
+        }
+
+        for (const mc of relevantClusters) {
+          const clusterId = mc.metadata?.name;
+
+          if (!clusterId) {
+            continue;
+          }
+
+          if (action === 'add') {
+            await this.ensureCrtb(clusterId, { userPrincipalId, groupPrincipalId, userName });
+          } else if (action === 'remove') {
+            await this.removeCrtb(clusterId, { userPrincipalId, groupPrincipalId, userName });
+          }
+        }
+      } catch {
+        // Cluster access binding sync is best-effort
+      }
+    },
+
+    async getProjectNamespaces(shortProjectId) {
+      try {
+        const allNs = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    '/api/v1/namespaces',
+        });
+
+        return (allNs?.items || [])
+          .filter((ns) => {
+            const projectAnno = ns.metadata?.annotations?.['field.cattle.io/projectId'] || '';
+
+            return projectAnno.endsWith(`:${ shortProjectId }`)
+              || projectAnno === shortProjectId;
+          })
+          .map((ns) => ns.metadata?.name);
+      } catch {
+        return [shortProjectId];
+      }
+    },
+
+    async ensureCrtb(clusterId, { userPrincipalId, groupPrincipalId, userName }) {
+      try {
+        // Check existing CRTBs
+        let existing = [];
+
+        try {
+          const resp = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/apis/management.cattle.io/v3/namespaces/${ clusterId }/clusterroletemplatebindings`,
+          });
+
+          existing = resp?.items || [];
+        } catch {
+          return;
+        }
+
+        const alreadyExists = existing.some((crtb) => {
+          if (crtb.roleTemplateName !== 'cluster-owner') {
+            return false;
+          }
+          if (userPrincipalId && crtb.userPrincipalName === userPrincipalId) {
+            return true;
+          }
+          if (groupPrincipalId && crtb.groupPrincipalName === groupPrincipalId) {
+            return true;
+          }
+          if (userName && crtb.userName === userName) {
+            return true;
+          }
+
+          return false;
+        });
+
+        if (alreadyExists) {
+          return;
+        }
+
+        const crtbData = {
+          apiVersion:       'management.cattle.io/v3',
+          kind:             'ClusterRoleTemplateBinding',
+          metadata:         {
+            generateName: 'crtb-cso-',
+            namespace:    clusterId,
+          },
+          clusterName:      clusterId,
+          roleTemplateName: 'cluster-owner',
+        };
+
+        if (userPrincipalId) {
+          crtbData.userPrincipalName = userPrincipalId;
+        } else if (groupPrincipalId) {
+          crtbData.groupPrincipalName = groupPrincipalId;
+        } else if (userName) {
+          crtbData.userName = userName;
+        }
+
+        await this.$store.dispatch('management/request', {
+          method:  'POST',
+          url:     `/apis/management.cattle.io/v3/namespaces/${ clusterId }/clusterroletemplatebindings`,
+          headers: { 'Content-Type': 'application/json' },
+          data:    JSON.stringify(crtbData),
+        });
+      } catch {
+        // silent
+      }
+    },
+
+    async removeCrtb(clusterId, { userPrincipalId, groupPrincipalId, userName }) {
+      try {
+        let existing = [];
+
+        try {
+          const resp = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `/apis/management.cattle.io/v3/namespaces/${ clusterId }/clusterroletemplatebindings`,
+          });
+
+          existing = resp?.items || [];
+        } catch {
+          return;
+        }
+
+        // Find cluster-owner CRTBs for this member
+        const toRemove = existing.filter((crtb) => {
+          if (crtb.roleTemplateName !== 'cluster-owner') {
+            return false;
+          }
+          if (userPrincipalId && crtb.userPrincipalName === userPrincipalId) {
+            return true;
+          }
+          if (groupPrincipalId && crtb.groupPrincipalName === groupPrincipalId) {
+            return true;
+          }
+          if (userName && crtb.userName === userName) {
+            return true;
+          }
+
+          return false;
+        });
+
+        for (const crtb of toRemove) {
+          try {
+            await this.$store.dispatch('management/request', {
+              method: 'DELETE',
+              url:    `/apis/management.cattle.io/v3/namespaces/${ clusterId }/clusterroletemplatebindings/${ crtb.metadata?.name }`,
+            });
+          } catch {
+            // silent
+          }
+        }
+      } catch {
+        // silent
       }
     },
 
@@ -500,26 +936,13 @@ export default {
 }
 
 .members-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   margin-bottom: 20px;
 }
 
-.member-row {
+.member-principal-cell {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--box-bg);
-}
-
-.member-info {
-  display: flex;
   gap: 8px;
-  align-items: center;
 }
 
 .member-name {
@@ -538,6 +961,15 @@ export default {
   padding: 2px 8px;
   background: var(--accent-btn);
   border-radius: 3px;
+}
+
+.add-member-role-fixed {
+  white-space: nowrap;
+}
+
+.member-spinner {
+  font-size: 14px;
+  color: var(--muted);
 }
 
 .member-remove-btn {
@@ -597,5 +1029,18 @@ export default {
 
 .mt-10 {
   margin-top: 10px;
+}
+
+:deep(.sortable-table-header .actions),
+:deep(td.col-actions) {
+  text-align: right;
+}
+
+:deep(.v-select.vs--open) {
+  z-index: 20000;
+}
+
+:deep(.vs__dropdown-menu) {
+  z-index: 20001 !important;
 }
 </style>

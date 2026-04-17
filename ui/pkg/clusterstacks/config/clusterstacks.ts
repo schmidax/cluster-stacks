@@ -1,5 +1,3 @@
-import { IPlugin } from '@shell/core/types';
-
 export const PRODUCT_NAME = 'clusterstacks';
 export const BLANK_CLUSTER = '_';
 
@@ -8,11 +6,13 @@ export const ROUTES = {
   DASHBOARD:              'clusterstacks-dashboard',
   CLUSTERS:               'clusterstacks-clusters',
   CLUSTERS_CREATE:        'clusterstacks-clusters-create',
+  CLUSTERS_STATUS:        'clusterstacks-clusters-status',
   CLUSTERS_DETAIL:        'clusterstacks-clusters-detail',
   STACKS:                 'clusterstacks-stacks',
   STACKS_CREATE:          'clusterstacks-stacks-create',
   CSO_MANAGEMENT:         'clusterstacks-cso-management',
   OPENSTACK:              'clusterstacks-openstack', // route name stays, path changes
+  OPENSTACK_DETAIL:       'clusterstacks-openstack-detail',
   OPENSTACK_CREATE:       'clusterstacks-openstack-create',
   OPENSTACK_RESOURCES:      'clusterstacks-openstack-resources',
   OPENSTACK_OBJECTSTORAGE:  'clusterstacks-openstack-objectstorage',
@@ -27,12 +27,16 @@ export const NAV = {
   STACKS:               'clusterstacks-stacks',
   CSO_MANAGEMENT:       'clusterstacks-cso-management',
   OPENSTACK:            'clusterstacks-openstack',
-  OPENSTACK_RESOURCES:      'clusterstacks-openstack-resources',
-  OPENSTACK_OBJECTSTORAGE:  'clusterstacks-openstack-objectstorage',
   CAPI_PROVIDERS:           'clusterstacks-capi-providers',
 };
 
-export function init($plugin: IPlugin, store: any) {
+// Set to false to remove the "Clusters" menu entry from the ClusterStacks sidebar.
+export const SHOW_CLUSTERS_NAV = true;
+
+// Admin nav items are always registered; page guards protect the actual pages.
+// (The v3User object from the store does not carry role information at plugin init time.)
+
+export function init($plugin: any, store: any) {
   const {
     product,
     basicType,
@@ -40,6 +44,7 @@ export function init($plugin: IPlugin, store: any) {
     configureType,
     weightType,
   } = $plugin.DSL(store, PRODUCT_NAME);
+  const showAdminNav = true; // Page guards handle actual access control
 
   // Register the product
   product({
@@ -61,22 +66,24 @@ export function init($plugin: IPlugin, store: any) {
     weight:     100,
   });
 
-  // Clusters menu item
-  virtualType({
-    name:       NAV.CLUSTERS,
-    labelKey:   'clusterstacks.nav.clusters',
-    route:      { name: ROUTES.CLUSTERS, params: { cluster: BLANK_CLUSTER } },
-    icon:       'cluster',
-    weight:     90,
-  });
+  // Clusters menu item (optional)
+  if (SHOW_CLUSTERS_NAV) {
+    virtualType({
+      name:       NAV.CLUSTERS,
+      labelKey:   'clusterstacks.nav.clusters',
+      route:      { name: ROUTES.CLUSTERS, params: { cluster: BLANK_CLUSTER } },
+      icon:       'cluster',
+      weight:     90,
+    });
 
-  configureType(NAV.CLUSTERS, {
-    isCreatable:  true,
-    isEditable:   true,
-    isRemovable:  true,
-    showAge:      true,
-    showState:    true,
-  });
+    configureType(NAV.CLUSTERS, {
+      isCreatable:  true,
+      isEditable:   true,
+      isRemovable:  true,
+      showAge:      true,
+      showState:    true,
+    });
+  }
 
   // ClusterStacks menu item – Stacks sub-item
   virtualType({
@@ -87,20 +94,21 @@ export function init($plugin: IPlugin, store: any) {
     weight:     81,
   });
 
-  // ClusterStacks menu item – Management sub-item
-  virtualType({
-    name:       NAV.CSO_MANAGEMENT,
-    labelKey:   'clusterstacks.nav.csoManagement',
-    route:      { name: ROUTES.CSO_MANAGEMENT, params: { cluster: BLANK_CLUSTER } },
-    icon:       'gear',
-    weight:     80,
-  });
-
+  // ClusterStacks menu item – Management sub-item (admin only)
+  if (showAdminNav) {
+    virtualType({
+      name:       NAV.CSO_MANAGEMENT,
+      labelKey:   'clusterstacks.nav.csoManagement',
+      route:      { name: ROUTES.CSO_MANAGEMENT, params: { cluster: BLANK_CLUSTER } },
+      icon:       'gear',
+      weight:     80,
+    });
+  }
 
   // OpenStack Projects menu item (credentials list)
   virtualType({
     name:       NAV.OPENSTACK,
-    labelKey:   'clusterstacks.nav.openstackCredentials',
+    labelKey:   'clusterstacks.nav.openstack',
     route:      { name: ROUTES.OPENSTACK, params: { cluster: BLANK_CLUSTER } },
     icon:       'key',
     weight:     71,
@@ -112,64 +120,48 @@ export function init($plugin: IPlugin, store: any) {
     isRemovable: true,
   });
 
-  // OpenStack Resources menu item
-  virtualType({
-    name:       NAV.OPENSTACK_RESOURCES,
-    labelKey:   'clusterstacks.nav.openstackResources',
-    route:      { name: ROUTES.OPENSTACK_RESOURCES, params: { cluster: BLANK_CLUSTER } },
-    icon:       'globe',
-    weight:     70,
-  });
+  // CAPI Providers menu item (admin only)
+  if (showAdminNav) {
+    virtualType({
+      name:       NAV.CAPI_PROVIDERS,
+      labelKey:   'clusterstacks.nav.capiProviders',
+      route:      { name: ROUTES.CAPI_PROVIDERS, params: { cluster: BLANK_CLUSTER } },
+      icon:       'cluster-management',
+      weight:     60,
+    });
 
-  // OpenStack Object Storage menu item
-  virtualType({
-    name:       NAV.OPENSTACK_OBJECTSTORAGE,
-    labelKey:   'clusterstacks.nav.openstackObjectstorage',
-    route:      { name: ROUTES.OPENSTACK_OBJECTSTORAGE, params: { cluster: BLANK_CLUSTER } },
-    icon:       'folder',
-    weight:     69,
-  });
-
-  // CAPI Providers menu item
-  virtualType({
-    name:       NAV.CAPI_PROVIDERS,
-    labelKey:   'clusterstacks.nav.capiProviders',
-    route:      { name: ROUTES.CAPI_PROVIDERS, params: { cluster: BLANK_CLUSTER } },
-    icon:       'cluster-management',
-    weight:     60,
-  });
-
-  configureType(NAV.CAPI_PROVIDERS, {
-    isCreatable: true,
-    isEditable:  true,
-    isRemovable: true,
-  });
+    configureType(NAV.CAPI_PROVIDERS, {
+      isCreatable: true,
+      isEditable:  true,
+      isRemovable: true,
+    });
+  }
 
   // Add all nav items to the sidebar
-  basicType([
-    NAV.DASHBOARD,
-    NAV.CLUSTERS,
-  ]);
-  // ClusterStacks group: Stacks + CSO Management + CAPI Providers
-  basicType([
-    NAV.STACKS,
-    NAV.CSO_MANAGEMENT,
-    NAV.CAPI_PROVIDERS,
-  ], 'ClusterStacks');
-  // OpenStack group
-  basicType([
-    NAV.OPENSTACK,
-    NAV.OPENSTACK_RESOURCES,
-    NAV.OPENSTACK_OBJECTSTORAGE,
-  ], 'OpenStack');
+  const topLevelNav = [NAV.DASHBOARD, NAV.OPENSTACK];
 
+  if (SHOW_CLUSTERS_NAV) {
+    topLevelNav.push(NAV.CLUSTERS);
+  }
+
+  basicType(topLevelNav);
+  // ClusterStacks group: Stacks + optional admin entries
+  const clusterStacksNav = [NAV.STACKS];
+
+  if (showAdminNav) {
+    clusterStacksNav.push(NAV.CSO_MANAGEMENT, NAV.CAPI_PROVIDERS);
+  }
+
+  basicType(clusterStacksNav, 'ClusterStacks');
   // Weight the nav types so they appear in the right order
   weightType(NAV.DASHBOARD,           100, true);
-  weightType(NAV.CLUSTERS,             90, true);
+  if (SHOW_CLUSTERS_NAV) {
+    weightType(NAV.CLUSTERS,           90, true);
+  }
   weightType(NAV.STACKS,               81, true);
-  weightType(NAV.CSO_MANAGEMENT,       80, true);
+  if (showAdminNav) {
+    weightType(NAV.CSO_MANAGEMENT,     80, true);
+    weightType(NAV.CAPI_PROVIDERS,     60, true);
+  }
   weightType(NAV.OPENSTACK,            71, true);
-  weightType(NAV.OPENSTACK_RESOURCES,      70, true);
-  weightType(NAV.OPENSTACK_OBJECTSTORAGE,  69, true);
-  weightType(NAV.CAPI_PROVIDERS,           60, true);
 }

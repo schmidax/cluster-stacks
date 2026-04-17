@@ -3,34 +3,22 @@
     <div class="form-section">
       <!-- Provider -->
       <div class="form-row">
-        <label class="form-label" for="cs-provider">
-          {{ t('clusterstacks.stackForm.provider') }}
-          <span class="required">*</span>
-        </label>
-        <div v-if="isEdit" class="form-input form-input-disabled">
-          {{ form.provider }}
-        </div>
+        <LabeledInput
+          v-if="isEdit"
+          :value="form.provider"
+          :label="t('clusterstacks.stackForm.provider')"
+          :disabled="true"
+        />
         <div v-else>
-          <div v-if="loadingProviders" class="form-hint-text">
-            <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
-          </div>
-          <select
-            v-else
-            id="cs-provider"
-            v-model="form.provider"
-            class="form-select"
-          >
-            <option value="" disabled>
-              {{ t('clusterstacks.stackForm.providerSelect') }}
-            </option>
-            <option
-              v-for="p in infraProviders"
-              :key="p.name"
-              :value="p.name"
-            >
-              {{ p.name }}{{ p.namespace ? ` (${p.namespace})` : '' }}
-            </option>
-          </select>
+          <LabeledSelect
+            :value="form.provider"
+            :label="t('clusterstacks.stackForm.provider')"
+            :placeholder="t('clusterstacks.stackForm.providerSelect')"
+            :options="infraProviderOptions"
+            :loading="loadingProviders"
+            :taggable="true"
+            @update:value="form.provider = selectValue($event)"
+          />
           <span v-if="!loadingProviders && !infraProviders.length" class="form-hint-text">
             {{ t('clusterstacks.stackForm.noInfraProviders') }}
           </span>
@@ -39,50 +27,28 @@
 
       <!-- Name -->
       <div class="form-row">
-        <label class="form-label" for="cs-name">
-          {{ t('clusterstacks.stackForm.name') }}
-          <span class="required">*</span>
-        </label>
-        <div v-if="isEdit" class="form-input form-input-disabled">
-          {{ form.name }}
-        </div>
-        <div v-else>
-          <select
-            id="cs-name"
-            v-model="nameSelection"
-            class="form-select"
-            @change="onNameSelectionChange"
-          >
-            <option value="" disabled>
-              {{ t('clusterstacks.stackForm.nameSelect') }}
-            </option>
-            <option value="rke2">rke2</option>
-            <option value="scs2">scs2</option>
-            <option value="__custom__">
-              {{ t('clusterstacks.stackForm.nameCustom') }}
-            </option>
-          </select>
-          <input
-            v-if="nameSelection === '__custom__'"
-            v-model="form.name"
-            type="text"
-            class="form-input mt-5"
-            :placeholder="t('clusterstacks.stackForm.namePlaceholder')"
-          />
-        </div>
+        <LabeledInput
+          v-if="isEdit"
+          :value="form.name"
+          :label="t('clusterstacks.stackForm.name')"
+          :disabled="true"
+        />
+        <LabeledSelect
+          v-else
+          :value="form.name"
+          :label="t('clusterstacks.stackForm.name')"
+          :placeholder="t('clusterstacks.stackForm.namePlaceholder')"
+          :options="stackNameOptions"
+          :taggable="true"
+          @update:value="onNameSelectionChange"
+        />
       </div>
 
       <!-- kubernetesVersion -->
       <div class="form-row">
-        <label class="form-label" for="cs-k8s-version">
-          {{ t('clusterstacks.stackForm.kubernetesVersion') }}
-          <span class="required">*</span>
-        </label>
-        <input
-          id="cs-k8s-version"
-          v-model="form.kubernetesVersion"
-          type="text"
-          class="form-input"
+        <LabeledInput
+          v-model:value="form.kubernetesVersion"
+          :label="t('clusterstacks.stackForm.kubernetesVersion')"
           :placeholder="t('clusterstacks.stackForm.kubernetesVersionPlaceholder')"
           :disabled="isEdit"
         />
@@ -90,52 +56,42 @@
 
       <!-- channel -->
       <div class="form-row">
-        <label class="form-label" for="cs-channel">
-          {{ t('clusterstacks.stackForm.channel') }}
-        </label>
-        <select id="cs-channel" v-model="form.channel" class="form-select">
-          <option value="stable">stable</option>
-          <option value="custom">custom</option>
-        </select>
+        <LabeledSelect
+          :value="form.channel"
+          :label="t('clusterstacks.stackForm.channel')"
+          :options="channelOptions"
+          @update:value="form.channel = selectValue($event)"
+        />
       </div>
 
       <!-- autoSubscribe -->
       <div class="form-row form-row-checkbox">
-        <label class="form-label checkbox-label">
-          <input v-model="form.autoSubscribe" type="checkbox" />
-          {{ t('clusterstacks.stackForm.autoSubscribe') }}
-        </label>
+        <Checkbox v-model:value="form.autoSubscribe" :label="t('clusterstacks.stackForm.autoSubscribe')" />
         <span class="form-hint-text">{{ t('clusterstacks.stackForm.autoSubscribeHint') }}</span>
       </div>
 
       <!-- noProvider -->
       <div class="form-row form-row-checkbox">
-        <label class="form-label checkbox-label">
-          <input v-model="form.noProvider" type="checkbox" />
-          {{ t('clusterstacks.stackForm.noProvider') }}
-        </label>
+        <Checkbox v-model:value="form.noProvider" :label="t('clusterstacks.stackForm.noProvider')" />
         <span class="form-hint-text">{{ t('clusterstacks.stackForm.noProviderHint') }}</span>
       </div>
 
       <!-- Versions (only when autoSubscribe == false) -->
       <div v-if="!form.autoSubscribe" class="form-row">
-        <label class="form-label">
-          {{ t('clusterstacks.stackForm.versions') }}
-          <span class="required">*</span>
-        </label>
         <div class="versions-list">
           <div
             v-for="(ver, idx) in form.versions"
             :key="idx"
             class="version-row"
           >
-            <input
-              v-model="form.versions[idx]"
-              type="text"
-              class="form-input version-input"
-              :class="{ 'is-invalid': ver && !isValidVersion(ver) }"
-              :placeholder="t('clusterstacks.stackForm.versionPlaceholder')"
-            />
+            <div class="version-input-wrap">
+              <input
+                v-model.trim="form.versions[idx]"
+                type="text"
+                class="version-input"
+                :placeholder="t('clusterstacks.stackForm.versionPlaceholder')"
+              >
+            </div>
             <button class="btn btn-sm role-secondary btn-remove-var" @click="removeVersion(idx)">
               &times;
             </button>
@@ -159,24 +115,43 @@
       {{ error }}
     </div>
 
+    <div v-if="isFleetManagedExisting" class="fleet-managed-notice">
+      <i class="icon icon-warning" /> {{ fleetManagedTooltip }}
+    </div>
+
     <div class="form-actions">
       <button class="btn role-secondary" :disabled="saving" @click="$emit('cancel')">
         {{ t('clusterstacks.common.cancel') }}
       </button>
-      <button class="btn role-primary" :disabled="!isValid || saving" @click="save">
-        <span v-if="saving"><i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.saving') }}</span>
-        <span v-else>{{ isEdit ? t('clusterstacks.stackForm.update') : t('clusterstacks.stackForm.save') }}</span>
-      </button>
+      <AsyncButton
+        :disabled="!isValid || saving || isFleetManagedExisting"
+        :action-label="isEdit ? t('clusterstacks.stackForm.update') : t('clusterstacks.stackForm.save')"
+        :title="isFleetManagedExisting ? fleetManagedTooltip : ''"
+        @click="saveAction"
+      />
     </div>
   </div>
 </template>
 
 <script>
-const VERSION_RE       = /^v\d+$/;
+import { LabeledInput } from '@components/Form/LabeledInput';
+import { Checkbox } from '@components/Form/Checkbox';
+import LabeledSelect from '@shell/components/form/LabeledSelect';
+import AsyncButton from '@shell/components/AsyncButton';
+import { FLEET_MANAGED_TOOLTIP, isFleetManagedResource } from '../utils/fleet-management';
+
+const VERSION_RE       = /^v\d+(?:[-.][a-z0-9]+(?:[.-][a-z0-9]+)*)?$/i;
 const DEFAULT_NAMESPACE = 'clusterstacks';
 
 export default {
   name: 'ClusterStackForm',
+
+  components: {
+    AsyncButton,
+    Checkbox,
+    LabeledInput,
+    LabeledSelect,
+  },
 
   emits: ['save', 'cancel'],
 
@@ -193,7 +168,6 @@ export default {
       error:            null,
       infraProviders:   [],
       loadingProviders: false,
-      nameSelection:    '',
       form:             {
         provider:          '',
         name:              '',
@@ -211,8 +185,16 @@ export default {
   },
 
   computed: {
+    fleetManagedTooltip() {
+      return FLEET_MANAGED_TOOLTIP;
+    },
+
     isEdit() {
       return !!this.existingStack;
+    },
+
+    isFleetManagedExisting() {
+      return this.isEdit && isFleetManagedResource(this.existingStack);
     },
 
     resourceName() {
@@ -229,6 +211,24 @@ export default {
 
     validVersions() {
       return this.form.versions.filter((v) => v.trim() && VERSION_RE.test(v.trim()));
+    },
+
+    infraProviderOptions() {
+      return this.infraProviders.map((provider) => ({
+        label: `${ provider.name }${ provider.namespace ? ` (${ provider.namespace })` : '' }`,
+        value: provider.name,
+      }));
+    },
+
+    stackNameOptions() {
+      return ['rke2', 'scs2'].map((name) => ({ label: name, value: name }));
+    },
+
+    channelOptions() {
+      return [
+        { label: 'stable', value: 'stable' },
+        { label: 'custom', value: 'custom' },
+      ];
     },
 
     isValid() {
@@ -259,12 +259,6 @@ export default {
 
           this.form.provider          = spec.provider || '';
           this.form.name              = spec.name || '';
-          // Pre-select dropdown if name matches a known option
-          if (this.form.name === 'rke2' || this.form.name === 'scs2') {
-            this.nameSelection = this.form.name;
-          } else if (this.form.name) {
-            this.nameSelection = '__custom__';
-          }
           this.form.kubernetesVersion = spec.kubernetesVersion || '';
           this.form.channel           = spec.channel || 'stable';
           this.form.autoSubscribe     = !!spec.autoSubscribe;
@@ -281,12 +275,16 @@ export default {
   },
 
   methods: {
-    onNameSelectionChange() {
-      if (this.nameSelection !== '__custom__') {
-        this.form.name = this.nameSelection;
-      } else {
-        this.form.name = '';
+    selectValue(input) {
+      if (input && typeof input === 'object' && Object.prototype.hasOwnProperty.call(input, 'value')) {
+        return input.value;
       }
+
+      return input;
+    },
+
+    onNameSelectionChange(value) {
+      this.form.name = String(this.selectValue(value) || '').trim();
     },
 
     async loadInfraProviders() {
@@ -318,11 +316,20 @@ export default {
       this.form.versions.push('');
     },
 
+    updateVersion(idx, value) {
+      this.form.versions.splice(idx, 1, String(this.selectValue(value) || '').trim());
+    },
+
     removeVersion(idx) {
       this.form.versions.splice(idx, 1);
     },
 
     async save() {
+      if (this.isFleetManagedExisting) {
+        this.error = FLEET_MANAGED_TOOLTIP;
+        return;
+      }
+
       this.saving = true;
       this.error  = null;
 
@@ -405,6 +412,16 @@ export default {
       }
     },
 
+    async saveAction(buttonDone) {
+      try {
+        await this.save();
+        buttonDone?.(true);
+      } catch (e) {
+        buttonDone?.(false);
+        throw e;
+      }
+    },
+
     t(key) {
       return this.$store.getters['i18n/t'](key);
     },
@@ -444,42 +461,10 @@ export default {
   }
 }
 
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-weight: normal;
-}
-
 .form-hint-text {
   font-size: 0.8em;
   color: var(--muted);
   padding-left: 22px;
-}
-
-.form-input,
-.form-select {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--input-bg);
-  color: var(--body-text);
-  font-size: 0.9em;
-  width: 100%;
-
-  &.is-invalid {
-    border-color: var(--error);
-  }
-
-  &:focus {
-    outline: none;
-    border-color: var(--primary);
-  }
-}
-
-.mt-5 {
-  margin-top: 5px;
 }
 
 .form-info {
@@ -508,9 +493,19 @@ export default {
   flex-wrap: wrap;
 }
 
+.version-input-wrap {
+  min-width: 200px;
+  flex: 1 1 240px;
+}
+
 .version-input {
-  width: auto;
-  flex: 0 0 140px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg, var(--body-bg));
+  color: var(--body-text);
+  font-size: 14px;
 }
 
 .btn-remove-var {
@@ -526,6 +521,19 @@ export default {
 .validation-error {
   font-size: 0.8em;
   color: var(--error);
+}
+
+.fleet-managed-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: #f59e0b;
+  color: #1c1100;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 12px;
 }
 
 .form-error {

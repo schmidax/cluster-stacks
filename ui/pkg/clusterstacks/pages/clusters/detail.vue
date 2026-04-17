@@ -1,33 +1,40 @@
 <template>
   <div class="cluster-detail-page">
     <!-- ═══ HEADER (Rancher-style with badge + actions) ═══ -->
-    <div class="detail-masthead">
-      <div class="masthead-left">
-        <button class="btn btn-sm role-link mr-10" @click="goBack">
-          <i class="icon icon-chevron-left" /> {{ t('clusterstacks.clusters.title') }}
-        </button>
-        <div class="masthead-title">
-          <h1>{{ clusterName }}</h1>
-          <BadgeState
-            v-if="cluster"
-            :color="stateColor(cluster.status?.phase)"
-            :icon="stateIcon(cluster.status?.phase)"
-            :label="cluster.status?.phase || 'Unknown'"
-          />
+    <header class="with-subheader detail-masthead">
+      <div class="title">
+        <div class="masthead-left">
+          <button class="btn btn-sm role-link mr-10" @click="goBack">
+            <i class="icon icon-chevron-left" /> {{ t('clusterstacks.clusters.title') }}
+          </button>
+          <div class="masthead-title">
+            <h1 class="m-0">{{ clusterName }}</h1>
+            <BadgeState
+              v-if="cluster"
+              :color="stateColor(cluster.status?.phase)"
+              :icon="stateIcon(cluster.status?.phase)"
+              :label="cluster.status?.phase || 'Unknown'"
+            />
+          </div>
         </div>
       </div>
-      <div class="masthead-actions">
-        <button class="btn role-secondary" @click="exploreCluster">
-          <i class="icon icon-external-link" /> {{ t('clusterstacks.clusters.actions.explore') }}
-        </button>
-        <button class="btn role-secondary" @click="downloadKubeconfig">
-          <i class="icon icon-download" /> {{ t('clusterstacks.clusters.actions.downloadKubeconfig') }}
-        </button>
-        <button class="btn role-primary" @click="editCluster">
-          <i class="icon icon-edit" /> {{ t('clusterstacks.common.edit') }}
-        </button>
+      <div class="sub-header">
+        <!-- Slot content -->
       </div>
-    </div>
+      <div class="actions-container align-start">
+        <div class="actions masthead-actions">
+          <button class="btn role-secondary" @click="exploreCluster">
+            <i class="icon icon-external-link" /> {{ t('clusterstacks.clusters.actions.explore') }}
+          </button>
+          <button class="btn role-secondary" @click="downloadKubeconfig">
+            <i class="icon icon-download" /> {{ t('clusterstacks.clusters.actions.downloadKubeconfig') }}
+          </button>
+          <button class="btn role-primary" :disabled="isFleetManagedCluster" :title="isFleetManagedCluster ? FLEET_MANAGED_TOOLTIP : ''" @click="editCluster">
+            <i class="icon icon-edit" /> {{ t('clusterstacks.common.edit') }}
+          </button>
+        </div>
+      </div>
+    </header>
 
     <!-- Key-value summary bar (Rancher DetailTop style) -->
     <div v-if="cluster" class="detail-top">
@@ -37,7 +44,7 @@
       </div>
       <div class="detail-top-item">
         <label>{{ t('clusterstacks.clusterDetail.clusterClass') }}</label>
-        <span><code>{{ topology?.class || '—' }}</code></span>
+        <span><code>{{ topology?.classRef?.name || topology?.class || '—' }}</code></span>
       </div>
       <div class="detail-top-item">
         <label>{{ t('clusterstacks.clusters.table.version') }}</label>
@@ -45,7 +52,7 @@
       </div>
       <div class="detail-top-item">
         <label>{{ t('clusterstacks.clusters.table.provider') }}</label>
-        <span>{{ extractProvider(topology?.class) || '—' }}</span>
+        <span>{{ extractProvider(topology?.classRef?.name || topology?.class) || '—' }}</span>
       </div>
       <div class="detail-top-item">
         <label>{{ t('clusterstacks.clusterDetail.created') }}</label>
@@ -59,7 +66,7 @@
 
     <template v-else-if="cluster">
       <!-- ═══ TABS (Rancher Tabbed component) ═══ -->
-      <Tabbed :default-tab="'overview'" :use-hash="false">
+      <Tabbed :default-tab="activeTab" :use-hash="false">
         <!-- ─── OVERVIEW TAB ──────────────────────── -->
         <Tab name="overview" :label="t('clusterstacks.clusterDetail.tabs.overview')" :weight="40">
           <!-- Status overview cards -->
@@ -80,20 +87,22 @@
                   <tr>
                     <td class="kv-label">{{ t('clusterstacks.clusterDetail.cpReady') }}</td>
                     <td>
-                      <i :class="cluster.status?.controlPlaneReady ? 'icon icon-checkmark text-success' : 'icon icon-warning text-warning'" />
-                      {{ cluster.status?.controlPlaneReady ? t('clusterstacks.common.yes') : t('clusterstacks.common.no') }}
+                      <i :class="controlPlaneReady ? 'icon icon-checkmark text-success' : 'icon icon-warning text-warning'" />
+                      {{ controlPlaneReady ? t('clusterstacks.common.yes') : t('clusterstacks.common.no') }}
+                      <span class="replica-note">({{ controlPlaneReplicaSummary }})</span>
                     </td>
                   </tr>
                   <tr>
                     <td class="kv-label">{{ t('clusterstacks.clusterDetail.infraReady') }}</td>
                     <td>
-                      <i :class="cluster.status?.infrastructureReady ? 'icon icon-checkmark text-success' : 'icon icon-warning text-warning'" />
-                      {{ cluster.status?.infrastructureReady ? t('clusterstacks.common.yes') : t('clusterstacks.common.no') }}
+                      <i :class="infrastructureReady ? 'icon icon-checkmark text-success' : 'icon icon-warning text-warning'" />
+                      {{ infrastructureReady ? t('clusterstacks.common.yes') : t('clusterstacks.common.no') }}
+                      <span class="replica-note">({{ workerReplicaSummary }})</span>
                     </td>
                   </tr>
                   <tr>
                     <td class="kv-label">{{ t('clusterstacks.clusterDetail.cpReplicas') }}</td>
-                    <td>{{ topology?.controlPlane?.replicas || 0 }}</td>
+                    <td>{{ capiReplicaStatus.cpDesired }}</td>
                   </tr>
                   <tr>
                     <td class="kv-label">{{ t('clusterstacks.clusterDetail.workerReplicas') }}</td>
@@ -108,31 +117,31 @@
               <table class="detail-kv">
                 <tbody>
                   <tr>
-                    <td class="kv-label">Replicas</td>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.replicas') }}</td>
                     <td>{{ topology?.controlPlane?.replicas || 0 }}</td>
                   </tr>
                   <tr v-if="varsMap.controlPlaneFlavor">
-                    <td class="kv-label">Flavor</td>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.flavor') }}</td>
                     <td><code>{{ varsMap.controlPlaneFlavor }}</code></td>
                   </tr>
                   <tr v-if="varsMap.controlPlaneRootDisk">
-                    <td class="kv-label">Root Disk</td>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.rootDisk') }}</td>
                     <td>{{ varsMap.controlPlaneRootDisk }} GiB</td>
                   </tr>
                   <tr v-if="varsMap.clusterCNI">
-                    <td class="kv-label">CNI</td>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.cni') }}</td>
                     <td><code>{{ varsMap.clusterCNI }}</code></td>
                   </tr>
                   <tr v-if="varsMap.apiServerLoadBalancer">
-                    <td class="kv-label">API Server LB</td>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.apiServerLB') }}</td>
                     <td><code>{{ varsMap.apiServerLoadBalancer }}</code></td>
                   </tr>
                   <tr v-if="varsMap.imageName">
-                    <td class="kv-label">Image</td>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.image') }}</td>
                     <td><code>{{ varsMap.imageName }}</code></td>
                   </tr>
                   <tr v-if="varsMap.sshKeyName">
-                    <td class="kv-label">SSH Key</td>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.sshKey') }}</td>
                     <td><code>{{ varsMap.sshKeyName }}</code></td>
                   </tr>
                 </tbody>
@@ -144,27 +153,26 @@
           <div class="section-header">
             <h3>{{ t('clusterstacks.clusterDetail.workerPoolsDetail') }}</h3>
           </div>
-          <div v-if="workerPools.length" class="pool-list">
-            <div v-for="(pool, idx) in workerPools" :key="idx" class="detail-card pool-card">
-              <h4>{{ pool.name }}</h4>
-              <table class="detail-kv">
-                <tbody>
-                  <tr>
-                    <td class="kv-label">Class</td>
-                    <td><code>{{ pool.class }}</code></td>
-                  </tr>
-                  <tr>
-                    <td class="kv-label">Replicas</td>
-                    <td>{{ pool.replicas }}</td>
-                  </tr>
-                  <tr v-for="ov in (pool.variables?.overrides || [])" :key="ov.name">
-                    <td class="kv-label">{{ ov.name }}</td>
-                    <td><code>{{ formatVarValue(ov.value) }}</code></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <SortableTable
+            v-if="workerPoolRows.length"
+            :rows="workerPoolRows"
+            :headers="workerPoolHeaders"
+            key-field="id"
+            :search="false"
+            :paging="false"
+            :table-actions="false"
+            :row-actions="false"
+          >
+            <template #cell:name="{ row }">
+              <code>{{ row.name }}</code>
+            </template>
+            <template #cell:class="{ row }">
+              <code>{{ row.class || '—' }}</code>
+            </template>
+            <template #cell:overrides="{ row }">
+              <code>{{ row.overrides || '—' }}</code>
+            </template>
+          </SortableTable>
           <div v-else class="empty-state">{{ t('clusterstacks.clusterDetail.noWorkerPools') }}</div>
 
           <!-- Conditions -->
@@ -194,37 +202,77 @@
           <div v-else class="empty-state">{{ t('clusterstacks.clusterDetail.noConditions') }}</div>
         </Tab>
 
+        <Tab name="clusterstacks" :label="t('clusterstacks.clusterDetail.tabs.clusterstacks')" :weight="15">
+          <div class="detail-grid">
+            <div class="detail-card">
+              <h3>{{ t('clusterstacks.clusterDetail.clusterStacksInfo') }}</h3>
+              <table class="detail-kv">
+                <tbody>
+                  <tr>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.class') }}</td>
+                    <td><code>{{ topology?.classRef?.name || topology?.class || '—' }}</code></td>
+                  </tr>
+                  <tr>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.classNamespace') }}</td>
+                    <td><code>{{ topology?.classRef?.namespace || topology?.classNamespace || '—' }}</code></td>
+                  </tr>
+                  <tr>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.namespace') }}</td>
+                    <td><code>{{ cluster?.metadata?.namespace || '—' }}</code></td>
+                  </tr>
+                  <tr>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.managedSecret') }}</td>
+                    <td><code>{{ cluster?.metadata?.labels?.['managed-secret'] || '—' }}</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="detail-card">
+              <h3>{{ t('clusterstacks.clusterDetail.clusterNetwork') }}</h3>
+              <table class="detail-kv">
+                <tbody>
+                  <tr>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.podsCidr') }}</td>
+                    <td><code>{{ clusterNetworkPodsCidr }}</code></td>
+                  </tr>
+                  <tr>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.servicesCidr') }}</td>
+                    <td><code>{{ clusterNetworkServicesCidr }}</code></td>
+                  </tr>
+                  <tr>
+                    <td class="kv-label">{{ t('clusterstacks.clusterDetail.serviceDomain') }}</td>
+                    <td><code>{{ clusterNetworkServiceDomain }}</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Tab>
+
         <!-- ─── VARIABLES TAB ─────────────────────── -->
         <Tab name="variables" :label="t('clusterstacks.clusterDetail.tabs.variables')" :weight="30">
-          <div v-if="topologyVariables.length" class="variables-table">
-            <table class="kv-table">
-              <thead>
-                <tr>
-                  <th class="kv-expand-col" />
-                  <th>{{ t('clusterstacks.clusterDetail.varName') }}</th>
-                  <th>{{ t('clusterstacks.clusterDetail.varType') }}</th>
-                  <th>{{ t('clusterstacks.clusterDetail.varPreview') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template v-for="v in topologyVariables" :key="v.name">
-                  <tr class="kv-row" :class="{ expandable: isComplexVar(v.value) }" @click="toggleVar(v.name)">
-                    <td class="kv-expand-col">
-                      <i v-if="isComplexVar(v.value)" class="icon" :class="expandedVars[v.name] ? 'icon-chevron-down' : 'icon-chevron-right'" />
-                    </td>
-                    <td class="kv-name"><code>{{ v.name }}</code></td>
-                    <td class="kv-type">{{ varType(v.value) }}</td>
-                    <td class="kv-preview"><code>{{ varPreview(v.value) }}</code></td>
-                  </tr>
-                  <tr v-if="expandedVars[v.name]" :key="v.name + '-expanded'" class="kv-expanded">
-                    <td colspan="4">
-                      <pre class="yaml-inline">{{ toYaml(v.value) }}</pre>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
+          <SortableTable
+            v-if="variableRows.length"
+            :rows="variableRows"
+            :headers="variableHeaders"
+            key-field="id"
+            :search="true"
+            :paging="true"
+            :rows-per-page="20"
+            :table-actions="false"
+            :row-actions="false"
+          >
+            <template #cell:name="{ row }">
+              <code>{{ row.name }}</code>
+            </template>
+            <template #cell:preview="{ row }">
+              <code>{{ row.preview }}</code>
+            </template>
+            <template #cell:valueYaml="{ row }">
+              <pre class="yaml-inline">{{ row.valueYaml }}</pre>
+            </template>
+          </SortableTable>
           <div v-else class="empty-state">{{ t('clusterstacks.clusterDetail.noVariables') }}</div>
         </Tab>
 
@@ -312,14 +360,14 @@
         <!-- ─── YAML TAB ─────────────────────────── -->
         <Tab name="yaml" :label="t('clusterstacks.clusterDetail.tabs.yaml')" :weight="10" class="yaml-tab">
           <div class="yaml-header">
-            <button v-if="!yamlEditing" class="btn btn-sm role-secondary" @click="startYamlEdit">
+            <button v-if="!yamlEditing" class="btn btn-sm role-secondary" :disabled="isFleetManagedCluster" :title="isFleetManagedCluster ? FLEET_MANAGED_TOOLTIP : ''" @click="startYamlEdit">
               <i class="icon icon-edit" /> {{ t('clusterstacks.common.edit') }}
             </button>
             <div v-else class="yaml-edit-actions">
               <button class="btn btn-sm role-secondary" @click="cancelYamlEdit">
                 {{ t('clusterstacks.common.cancel') }}
               </button>
-              <button class="btn btn-sm role-primary" :disabled="yamlSaving" @click="saveYamlEdit">
+              <button class="btn btn-sm role-primary" :disabled="yamlSaving || isFleetManagedCluster" :title="isFleetManagedCluster ? FLEET_MANAGED_TOOLTIP : ''" @click="saveYamlEdit">
                 <i v-if="yamlSaving" class="icon icon-spinner icon-spin" />
                 {{ t('clusterstacks.clusterCreate.save') }}
               </button>
@@ -355,6 +403,8 @@ import YamlEditor, { EDITOR_MODES } from '@shell/components/YamlEditor';
 import { BadgeState } from '@rancher/components';
 import jsyaml from 'js-yaml';
 import { ROUTES } from '../../config/clusterstacks';
+import { getCapiReplicaStatus } from '../../utils/capi-status';
+import { FLEET_MANAGED_TOOLTIP, isFleetManagedResource } from '../../utils/fleet-management';
 
 export default {
   name: 'ClusterDetail',
@@ -374,10 +424,6 @@ export default {
       cluster:         null,
       loading:         false,
 
-      // Expanded variables
-      expandedVars: {},
-
-      // Snapshots
       snapshots:          [],
       loadingSnapshots:   false,
       snapshotError:      null,
@@ -396,6 +442,14 @@ export default {
   },
 
   computed: {
+    FLEET_MANAGED_TOOLTIP() {
+      return FLEET_MANAGED_TOOLTIP;
+    },
+
+    isFleetManagedCluster() {
+      return isFleetManagedResource(this.cluster);
+    },
+
     clusterName() {
       return this.$route.query.name || '';
     },
@@ -412,6 +466,43 @@ export default {
       return this.topology?.variables || [];
     },
 
+    variableRows() {
+      return this.topologyVariables.map((v) => ({
+        id:       v.name,
+        name:     v.name,
+        type:     this.varType(v.value),
+        preview:  this.varPreview(v.value),
+        valueYaml: this.toYaml(v.value),
+      }));
+    },
+
+    workerPoolRows() {
+      return this.workerPools.map((pool, idx) => {
+        const overrides = (pool.variables?.overrides || [])
+          .map((ov) => `${ ov.name }=${ this.formatVarValue(ov.value) }`)
+          .join(', ');
+
+        return {
+          id:        `${ pool.name || 'pool' }-${ idx }`,
+          name:      pool.name || `pool-${ idx + 1 }`,
+          class:     pool.class || '',
+          replicas:  pool.replicas ?? 0,
+          overrides,
+        };
+      });
+    },
+
+    activeTab() {
+      const tab = String(this.$route.query?.tab || '').trim();
+      const allowed = new Set(['overview', 'variables', 'snapshots', 'clusterstacks', 'yaml']);
+
+      if (allowed.has(tab)) {
+        return tab;
+      }
+
+      return 'overview';
+    },
+
     varsMap() {
       const map = {};
 
@@ -426,8 +517,28 @@ export default {
       return this.topology?.workers?.machineDeployments || [];
     },
 
+    capiReplicaStatus() {
+      return getCapiReplicaStatus(this.cluster);
+    },
+
+    controlPlaneReady() {
+      return this.capiReplicaStatus.controlPlaneReady;
+    },
+
+    infrastructureReady() {
+      return this.capiReplicaStatus.infrastructureReady;
+    },
+
+    controlPlaneReplicaSummary() {
+      return `${ this.capiReplicaStatus.cpReady }/${ this.capiReplicaStatus.cpDesired }`;
+    },
+
+    workerReplicaSummary() {
+      return `${ this.capiReplicaStatus.workerReady }/${ this.capiReplicaStatus.workerDesired }`;
+    },
+
     totalWorkerReplicas() {
-      return this.workerPools.reduce((sum, md) => sum + (md.replicas || 0), 0);
+      return this.capiReplicaStatus.workerDesired;
     },
 
     conditions() {
@@ -452,6 +563,18 @@ export default {
       };
     },
 
+    clusterNetworkPodsCidr() {
+      return this.cluster?.spec?.clusterNetwork?.pods?.cidrBlocks?.[0] || '—';
+    },
+
+    clusterNetworkServicesCidr() {
+      return this.cluster?.spec?.clusterNetwork?.services?.cidrBlocks?.[0] || '—';
+    },
+
+    clusterNetworkServiceDomain() {
+      return this.cluster?.spec?.clusterNetwork?.serviceDomain || '—';
+    },
+
     clusterYaml() {
       if (!this.cluster) {
         return '';
@@ -472,6 +595,47 @@ export default {
         { name: 'reason',             label: 'Reason',             value: 'reason' },
         { name: 'message',            label: 'Message',            value: 'message' },
         { name: 'lastTransitionTime', label: 'Last Transition',    value: 'lastTransitionTime', width: 200 },
+      ];
+    },
+
+    variableHeaders() {
+      return [
+        {
+          name:     'name',
+          label:    this.t('clusterstacks.clusterDetail.varName'),
+          value:    'name',
+          sort:     ['name'],
+          width:    220,
+        },
+        {
+          name:     'type',
+          label:    this.t('clusterstacks.clusterDetail.varType'),
+          value:    'type',
+          sort:     ['type'],
+          width:    120,
+        },
+        {
+          name:     'preview',
+          label:    this.t('clusterstacks.clusterDetail.varPreview'),
+          value:    'preview',
+          sort:     false,
+        },
+        {
+          name:     'valueYaml',
+          label:    'YAML',
+          value:    'valueYaml',
+          sort:     false,
+          search:   false,
+        },
+      ];
+    },
+
+    workerPoolHeaders() {
+      return [
+        { name: 'name',      label: 'Name',      value: 'name', sort: ['name'] },
+        { name: 'class',     label: 'Class',     value: 'class' },
+        { name: 'replicas',  label: 'Replicas',  value: 'replicas', width: 120 },
+        { name: 'overrides', label: 'Overrides', value: 'overrides', sort: false },
       ];
     },
 
@@ -537,7 +701,7 @@ export default {
       try {
         this.cluster = await this.$store.dispatch('management/request', {
           method: 'GET',
-          url:    `/apis/cluster.x-k8s.io/v1beta1/namespaces/${ this.clusterNamespace }/clusters/${ this.clusterName }`,
+          url:    `/apis/cluster.x-k8s.io/v1beta2/namespaces/${ this.clusterNamespace }/clusters/${ this.clusterName }`,
         });
       } catch (e) {
         if (!silent) {
@@ -565,10 +729,22 @@ export default {
       }
 
       try {
-        const mgmtClusters = await this.$store.dispatch('management/findAll', { type: 'management.cattle.io.cluster' });
-        const list = Array.isArray(mgmtClusters) ? mgmtClusters : (mgmtClusters?.data || []);
+        let mgmtClusters;
 
-        for (const mc of list) {
+        try {
+          const resp = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    '/apis/management.cattle.io/v3/clusters',
+          });
+
+          mgmtClusters = resp?.items || [];
+        } catch {
+          const result = await this.$store.dispatch('management/findAll', { type: 'management.cattle.io.cluster' });
+
+          mgmtClusters = Array.isArray(result) ? result : (result?.data || []);
+        }
+
+        for (const mc of mgmtClusters) {
           const labels = mc.metadata?.labels || {};
           const annotations = mc.metadata?.annotations || {};
           const displayName = mc.spec?.displayName || '';
@@ -591,11 +767,10 @@ export default {
     /**
      * Load ETCD snapshots from multiple API sources.
      * Strategy (ordered by priority):
-     *   1. k3s.cattle.io/v1 ETCDSnapshotFile (primary — the actual CRD for RKE2/k3s snapshots)
-     *   2. Downstream cluster proxy k3s.cattle.io/v1 etcdsnapshotfiles
-     *   3. Steve API v1/k3s.cattle.io.etcdsnapshotfiles
-     *   4. rke.cattle.io/v1 ETCDSnapshot (legacy fallback)
-     *   5. Rancher v3 etcdbackups
+     *   1. Downstream cluster proxy — k3s.cattle.io/v1 etcdsnapshotfiles (local RKE2 snapshots)
+     *   2. k3s.cattle.io/v1 ETCDSnapshotFile on management cluster (cluster-scoped)
+     *   3. rke.cattle.io/v1 ETCDSnapshot (legacy RKE1 fallback)
+     *   4. Rancher v3 etcdbackups
      */
     async loadSnapshots() {
       this.loadingSnapshots = true;
@@ -606,7 +781,30 @@ export default {
       let found = false;
 
       try {
-        // ── Attempt 1: k3s.cattle.io/v1 ETCDSnapshotFile (cluster-scoped) ──
+        // ── Attempt 1: Downstream cluster proxy — local RKE2/k3s ETCDSnapshotFile ──
+        // ETCDSnapshotFile is a cluster-scoped CRD on the downstream cluster itself,
+        // not the Rancher management cluster. Must go via the proxy.
+        if (!found && this.managementClusterId) {
+          try {
+            const clusterId = this.managementClusterId.includes('/')
+              ? this.managementClusterId.split('/').pop()
+              : this.managementClusterId;
+            const result = await this.$store.dispatch('management/request', {
+              method: 'GET',
+              url:    `/k8s/clusters/${ clusterId }/apis/k3s.cattle.io/v1/etcdsnapshotfiles`,
+            });
+            const items = result?.items || [];
+
+            if (items.length) {
+              this.snapshots = items;
+              found = true;
+            }
+          } catch {
+            // Downstream proxy not available or CRD not installed on that cluster
+          }
+        }
+
+        // ── Attempt 2: k3s.cattle.io/v1 ETCDSnapshotFile on management cluster ──
         if (!found) {
           try {
             const result = await this.$store.dispatch('management/request', {
@@ -628,59 +826,13 @@ export default {
               found = true;
             }
           } catch {
-            // k3s.cattle.io API not available
+            // k3s.cattle.io API not available on management cluster
           }
         }
 
-        // ── Attempt 2: Downstream cluster proxy — k3s.cattle.io/v1 etcdsnapshotfiles ──
-        if (!found && this.managementClusterId) {
-          try {
-            const result = await this.$store.dispatch('management/request', {
-              method: 'GET',
-              url:    `/k8s/clusters/${ this.managementClusterId }/apis/k3s.cattle.io/v1/etcdsnapshotfiles`,
-            });
-            const items = result?.items || [];
-
-            if (items.length) {
-              this.snapshots = items;
-              found = true;
-            }
-          } catch {
-            // Downstream proxy not available
-          }
-        }
-
-        // ── Attempt 3: Steve API v1/k3s.cattle.io.etcdsnapshotfiles ──
+        // ── Attempt 3: rke.cattle.io/v1 ETCDSnapshot (legacy RKE1) ──
         if (!found) {
-          try {
-            const provResult = await this.$store.dispatch('management/request', {
-              method: 'GET',
-              url:    `/v1/k3s.cattle.io.etcdsnapshotfiles`,
-            });
-            const items = Array.isArray(provResult) ? provResult : (provResult?.data || []);
-            const filtered = items.filter((s) => {
-              const labels = s.metadata?.labels || {};
-              const ns = s.metadata?.namespace || '';
-
-              return labels['rke.cattle.io/cluster-name'] === rancherClusterName ||
-                     labels['cluster.x-k8s.io/cluster-name'] === rancherClusterName ||
-                     ns === this.clusterNamespace;
-            });
-
-            if (filtered.length) {
-              this.snapshots = filtered;
-              found = true;
-            }
-          } catch {
-            // Steve API not available
-          }
-        }
-
-        // ── Attempt 4: rke.cattle.io/v1 ETCDSnapshot (legacy) ──
-        if (!found) {
-          const namespacesToTry = [this.clusterNamespace, 'fleet-default'];
-
-          for (const ns of namespacesToTry) {
+          for (const ns of [this.clusterNamespace, 'fleet-default']) {
             if (found) {
               break;
             }
@@ -709,10 +861,12 @@ export default {
           }
         }
 
-        // ── Attempt 5: Rancher v3 etcdbackups ──
+        // ── Attempt 4: Rancher v3 etcdbackups ──
         if (!found && this.managementClusterId) {
           try {
-            const mgmtId = this.managementClusterId.includes('/') ? this.managementClusterId.split('/').pop() : this.managementClusterId;
+            const mgmtId = this.managementClusterId.includes('/')
+              ? this.managementClusterId.split('/').pop()
+              : this.managementClusterId;
             const result = await this.$store.dispatch('management/request', {
               method: 'GET',
               url:    `/v3/etcdbackups?clusterId=${ mgmtId }`,
@@ -845,18 +999,6 @@ export default {
       }
     },
 
-    // ── Variable display helpers ────────────────────
-    toggleVar(name) {
-      const updated = { ...this.expandedVars };
-
-      updated[name] = !updated[name];
-      this.expandedVars = updated;
-    },
-
-    isComplexVar(val) {
-      return typeof val === 'object' && val !== null;
-    },
-
     varType(val) {
       if (Array.isArray(val)) {
         return 'array';
@@ -892,6 +1034,10 @@ export default {
     },
 
     startYamlEdit() {
+      if (this.isFleetManagedCluster) {
+        return;
+      }
+
       this.yamlEditContent = this.clusterYaml;
       this.yamlEditing = true;
       this.yamlError = null;
@@ -904,6 +1050,10 @@ export default {
     },
 
     async saveYamlEdit() {
+      if (this.isFleetManagedCluster) {
+        return;
+      }
+
       this.yamlError = null;
       this.yamlSaving = true;
 
@@ -927,7 +1077,7 @@ export default {
 
         await this.$store.dispatch('management/request', {
           method:  'PUT',
-          url:     `/apis/cluster.x-k8s.io/v1beta1/namespaces/${ this.clusterNamespace }/clusters/${ this.clusterName }`,
+          url:     `/apis/cluster.x-k8s.io/v1beta2/namespaces/${ this.clusterNamespace }/clusters/${ this.clusterName }`,
           headers: { 'Content-Type': 'application/json' },
           data:    JSON.stringify(parsed),
         });
@@ -967,6 +1117,10 @@ export default {
     },
 
     editCluster() {
+      if (this.isFleetManagedCluster) {
+        return;
+      }
+
       this.$router.push({
         name:  ROUTES.CLUSTERS_CREATE,
         query: { namespace: this.clusterNamespace, name: this.clusterName },
@@ -1047,11 +1201,25 @@ export default {
 
 // ── Masthead (Rancher-style) ──────────────────────────
 .detail-masthead {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   padding: 16px 0 12px;
   margin-bottom: 0;
+}
+
+header.with-subheader {
+  grid-template-areas:
+    'type-banner type-banner'
+    'title actions'
+    'sub-header sub-header'
+    'state-banner state-banner';
+}
+
+.title {
+  align-items: flex-start;
+  display: flex;
+}
+
+.sub-header {
+  grid-area: sub-header;
 }
 
 .masthead-left {
@@ -1201,71 +1369,15 @@ export default {
 }
 
 // ── Variables table (expandable) ──────────────────────
-.variables-table {
-  border: 1px solid var(--border);
-  border-radius: var(--border-radius);
-  overflow: hidden;
-}
-
-.kv-table {
-  width: 100%;
-  border-collapse: collapse;
-
-  th {
-    padding: 8px 12px;
-    text-align: left;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: var(--muted);
-    background: var(--accent-btn);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .kv-expand-col {
-    width: 30px;
-    text-align: center;
-    padding: 0 4px;
-
-    .icon {
-      font-size: 12px;
-      cursor: pointer;
-    }
-  }
-}
-
-.kv-row {
-  td {
-    padding: 8px 12px;
-    font-size: 13px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: middle;
-  }
-
-  &.expandable {
-    cursor: pointer;
-    &:hover { background: var(--accent-btn); }
-  }
-}
-
-.kv-name code { font-weight: 600; font-size: 13px; }
-.kv-type { color: var(--muted); font-size: 12px; }
-.kv-preview code { font-size: 12px; word-break: break-all; }
-
-.kv-expanded td {
-  padding: 0;
-  border-bottom: 1px solid var(--border);
-  background: var(--accent-btn);
-}
-
 .yaml-inline {
   margin: 0;
-  padding: 12px 16px 12px 54px;
+  padding: 8px 10px;
   font-size: 12px;
   line-height: 1.5;
-  background: none;
+  background: var(--accent-btn);
   white-space: pre-wrap;
   word-break: break-all;
+  border-radius: 4px;
 }
 
 // ── Snapshot actions ──────────────────────────────────
@@ -1331,6 +1443,12 @@ export default {
 .condition-message {
   font-size: 12px;
   word-break: break-all;
+}
+
+.replica-note {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 // ── Utility ───────────────────────────────────────────

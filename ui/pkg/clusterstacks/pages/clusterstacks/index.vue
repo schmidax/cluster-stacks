@@ -1,16 +1,27 @@
 <template>
   <div class="clusterstacks-page">
-    <div class="page-header">
-      <h1>{{ t('clusterstacks.stacks.title') }}</h1>
-      <div class="page-header-actions">
-        <button class="btn role-primary" @click="goCreate">
-          + {{ t('clusterstacks.stacks.createBtn') }}
-        </button>
-        <button class="btn role-secondary" @click="load">
-          <i class="icon icon-refresh" /> {{ t('clusterstacks.common.refresh') }}
-        </button>
+    <header class="with-subheader">
+      <div class="title">
+        <h1 class="m-0">{{ t('clusterstacks.stacks.title') }}</h1>
       </div>
-    </div>
+      <div class="sub-header">
+        <!-- Slot content -->
+      </div>
+      <div class="actions-container">
+        <div class="actions">
+          <button
+            v-if="canManageStacks"
+            class="btn role-primary mr-10"
+            @click="goCreate"
+          >
+            + {{ t('clusterstacks.stacks.createBtn') }}
+          </button>
+          <button class="btn role-secondary" @click="load">
+            <i class="icon icon-refresh" /> {{ t('clusterstacks.common.refresh') }}
+          </button>
+        </div>
+      </div>
+    </header>
 
     <div v-if="loading" class="loading-placeholder">
       <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
@@ -34,6 +45,7 @@
         :stack="stack"
         :releases="releasesByStack[stack.metadata.name] || []"
         :used-release-names="usedReleaseNames"
+        :read-only="!canManageStacks"
         @delete-release="onDeleteRelease"
         @edit-stack="onEditStack"
         @delete-stack="onDeleteStack"
@@ -53,6 +65,9 @@
 import ClusterStackCard from '../../components/ClusterStackCard.vue';
 import ConfirmDeleteDialog from '../../components/ConfirmDeleteDialog.vue';
 import { ROUTES } from '../../config/clusterstacks';
+import { isFleetManagedResource } from '../../utils/fleet-management';
+
+const SHARED_CLUSTERSTACKS_NAMESPACE = 'clusterstacks';
 
 export default {
   name: 'ClusterStacksIndex',
@@ -69,10 +84,16 @@ export default {
       error:                null,
       showDeleteDialog:     false,
       pendingDelete:        null,
+      currentUser:          {
+        isAdmin: false,
+      },
     };
   },
 
   computed: {
+    canManageStacks() {
+      return !!this.currentUser.isAdmin;
+    },
     releasesByStack() {
       const map = {};
 
@@ -97,7 +118,7 @@ export default {
       for (const release of this.releases) {
         const releaseName = release.metadata?.name || '';
         // Strip trailing version suffix: e.g. "openstack-rke2-1-33-v3" → "openstack-rke2-1-33"
-        const releasePrefix = releaseName.replace(/-v\d+$/, '');
+        const releasePrefix = releaseName.replace(/-v\d+(?:[-.][a-z0-9]+(?:[.-][a-z0-9]+)*)?$/i, '');
 
         const stackName = prefixToStackName[releasePrefix];
 
@@ -129,13 +150,16 @@ export default {
 
     /**
      * Set of ClusterClass names currently referenced by at least one Cluster.
+     * Supports both v1beta1 (spec.topology.class) and v1beta2 (spec.topology.classRef.name).
      * A release whose name matches a used ClusterClass is considered "in use".
      */
     usedClusterClassNames() {
       const names = new Set();
 
       for (const cluster of this.clusters) {
-        const className = cluster.spec?.topology?.class;
+        // v1beta1: spec.topology.class (string)
+        // v1beta2: spec.topology.classRef.name (object)
+        const className = cluster.spec?.topology?.class || cluster.spec?.topology?.classRef?.name;
 
         if (className) {
           names.add(className);
@@ -165,15 +189,35 @@ export default {
   },
 
   async mounted() {
+    await this.loadCurrentUser();
     await this.load();
   },
 
   methods: {
+    loadCurrentUser() {
+      const schema = this.$store.getters['management/schemaFor']('management.cattle.io.setting');
+      const isAdmin = !!(schema?.resourceMethods || []).includes('PUT');
+      this.currentUser = { isAdmin };
+    },
+
+
     goCreate() {
+      if (!this.canManageStacks) {
+        return;
+      }
+
       this.$router.push({ name: ROUTES.STACKS_CREATE });
     },
 
     onEditStack(stack) {
+      if (!this.canManageStacks) {
+        return;
+      }
+
+      if (isFleetManagedResource(stack)) {
+        return;
+      }
+
       this.$router.push({
         name:  ROUTES.STACKS_CREATE,
         query: {
@@ -184,6 +228,14 @@ export default {
     },
 
     async onDeleteStack(stack) {
+      if (!this.canManageStacks) {
+        return;
+      }
+
+      if (isFleetManagedResource(stack)) {
+        return;
+      }
+
       const ns   = stack.metadata?.namespace || 'clusterstacks';
       const name = stack.metadata?.name;
 
@@ -199,6 +251,14 @@ export default {
     },
 
     async onDeleteRelease(release) {
+      if (!this.canManageStacks) {
+        return;
+      }
+
+      if (isFleetManagedResource(release)) {
+        return;
+      }
+
       const ns   = release.metadata?.namespace || 'clusterstacks';
       const name = release.metadata?.name;
 
@@ -253,31 +313,121 @@ export default {
       this.error = null;
 
       try {
-        const [stacks, releases, clusterClasses, clusters] = await Promise.all([
+        let stacks = [];
+        let releases = [];
+        let clusterClasses = [];
+        let clusters = [];
+
+        // Try cluster-wide first
+        const [stacksRes, releasesRes, classesRes, clustersRes] = await Promise.all([
           this.$store.dispatch('management/findAll', {
             type: 'clusterstack.x-k8s.io.clusterstack',
-          }).catch(() => []),
+          }).catch(() => null),
           this.$store.dispatch('management/findAll', {
             type: 'clusterstack.x-k8s.io.clusterstackrelease',
-          }).catch(() => []),
+          }).catch(() => null),
           this.$store.dispatch('management/findAll', {
             type: 'cluster.x-k8s.io.clusterclass',
-          }).catch(() => []),
+          }).catch(() => null),
           this.$store.dispatch('management/findAll', {
             type: 'cluster.x-k8s.io.cluster',
-          }).catch(() => []),
+          }).catch(() => null),
         ]);
 
-        this.stacks = stacks || [];
-        this.releases = releases || [];
-        this.clusterClasses = clusterClasses || [];
-        this.clusters = clusters || [];
+        stacks = stacksRes || [];
+        releases = releasesRes || [];
+        clusterClasses = classesRes || [];
+        clusters = clustersRes || [];
+
+        // Namespace-scoped fallback for non-admin users
+        const needsFallback = !stacks.length && !releases.length;
+
+        if (needsFallback) {
+          const namespaces = await this.discoverCsoNamespaces();
+
+          const [nsSt, nsRel, nsCls] = await Promise.all([
+            this.loadNamespaceScoped(namespaces, '/apis/clusterstack.x-k8s.io/v1alpha1', 'clusterstacks'),
+            this.loadNamespaceScoped(namespaces, '/apis/clusterstack.x-k8s.io/v1alpha1', 'clusterstackreleases'),
+            this.loadNamespaceScoped(namespaces, '/apis/cluster.x-k8s.io/v1beta2', 'clusterclasses'),
+          ]);
+
+          stacks = nsSt;
+          releases = nsRel;
+          clusterClasses = nsCls;
+        }
+
+        // Always attempt namespace-scoped cluster load when cluster-wide returned nothing
+        // (non-admin users have namespace-scoped access via clusterstacks-capi-access RoleTemplate)
+        if (!clusters.length) {
+          const namespaces = await this.discoverCsoNamespaces();
+          const nsCl = await this.loadNamespaceScoped(namespaces, '/apis/cluster.x-k8s.io/v1beta2', 'clusters');
+
+          clusters = nsCl;
+        }
+
+        this.stacks = stacks;
+        this.releases = releases;
+        this.clusterClasses = clusterClasses;
+        this.clusters = clusters;
       } catch (e) {
         this.error = this.t('clusterstacks.errors.loadStacks');
         console.error(e); // eslint-disable-line no-console
       } finally {
         this.loading = false;
       }
+    },
+
+    async discoverCsoNamespaces() {
+      let namespaces = [];
+
+      try {
+        const nsResp = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    '/api/v1/namespaces',
+        });
+
+        namespaces = (nsResp?.items || [])
+          .map((ns) => ns.metadata?.name)
+          .filter((ns) => ns && ns.startsWith('cso-') && ns !== 'cso-system');
+      } catch {
+        try {
+          const nsResult = await this.$store.dispatch('management/findAll', {
+            type: 'namespace',
+            opt:  { force: true },
+          });
+
+          namespaces = (nsResult || [])
+            .map((ns) => ns.metadata?.name || ns.id)
+            .filter((ns) => ns && ns.startsWith('cso-') && ns !== 'cso-system');
+        } catch {
+          // no namespace access
+        }
+      }
+
+      return Array.from(new Set([...namespaces, SHARED_CLUSTERSTACKS_NAMESPACE]));
+    },
+
+    async loadNamespaceScoped(namespaces, apiBase, resource) {
+      const items = [];
+
+      const results = await Promise.allSettled(
+        namespaces.map(async(ns) => {
+          const resp = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    `${ apiBase }/namespaces/${ ns }/${ resource }`,
+          });
+
+          return resp?.items || [];
+        }),
+      );
+
+      for (const r of results) {
+        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+          items.push(...r.value);
+        }
+      }
+
+      return items;
     },
 
     t(key, args) {
@@ -292,16 +442,25 @@ export default {
   padding: 20px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+header {
   margin-bottom: 20px;
 }
 
-.page-header-actions {
+.title {
+  align-items: center;
   display: flex;
-  gap: 8px;
+}
+
+header.with-subheader {
+  grid-template-areas:
+    'type-banner type-banner'
+    'title actions'
+    'sub-header sub-header'
+    'state-banner state-banner';
+}
+
+.sub-header {
+  grid-area: sub-header;
 }
 
 .loading-placeholder,

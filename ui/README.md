@@ -121,6 +121,25 @@ The `validateQuota()` function in `services/quota-validator.ts`:
 3. Returns `{ valid: boolean, warnings: string[], errors: string[] }`
 4. Shows warnings when < 15% of quota remains; errors when quota would be exceeded
 
+### CSO Management: Auto Cluster-Owner Reconciler
+In the ClusterStacks UI, open **CSO Management** and go to **RBAC / Permissions**.
+There is a dedicated row **Auto Cluster-Owner Reconciler** with **Install/Remove** actions.
+
+When installed, the UI applies these resources directly via the Rancher API:
+- ServiceAccount `cso-cluster-owner-reconciler` in `cso-system`
+- ClusterRole + ClusterRoleBinding `cso-cluster-owner-reconciler`
+- ConfigMap `cso-cluster-owner-reconciler` containing `reconcile.sh`
+- Deployment `cso-cluster-owner-reconciler` (continuous, event-driven reconcile)
+
+Reconciler behavior:
+- Aligns `fleetWorkspaceName` of imported CAPI clusters to the CAPI namespace
+- Grants `cluster-owner` to principals with project roles `project-owner` and `project-member`
+- Removes only managed stale bindings labeled `cso.schmidax.io/managed=project-cluster-owner`
+
+Security model:
+- End users are not granted broad write access to `management.cattle.io`
+- Privileged actions run only via the reconciler service account
+
 ### CRD Types
 TypeScript interfaces for:
 - `ClusterStack` / `ClusterStackRelease` (`clusterstack.x-k8s.io/v1alpha1`)
