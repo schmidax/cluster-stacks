@@ -5,16 +5,19 @@
         <h3>{{ stack.metadata.name }}</h3>
         <span class="badge" :class="channelClass">{{ stack.spec?.channel || 'stable' }}</span>
         <button
+          v-if="!readOnly"
           class="btn btn-sm role-secondary card-edit-btn"
-          :title="t('clusterstacks.common.edit')"
+          :title="stackFleetManaged ? FLEET_MANAGED_TOOLTIP : t('clusterstacks.common.edit')"
+          :disabled="stackFleetManaged"
           @click="$emit('edit-stack', stack)"
         >
           <i class="icon icon-edit" />
         </button>
         <button
+          v-if="!readOnly"
           class="btn btn-sm role-danger card-delete-btn"
-          :title="hasReleasesInUse ? t('clusterstacks.stacks.card.stackInUse') : t('clusterstacks.common.delete')"
-          :disabled="hasReleasesInUse"
+          :title="stackFleetManaged ? FLEET_MANAGED_TOOLTIP : (hasReleasesInUse ? t('clusterstacks.stacks.card.stackInUse') : t('clusterstacks.common.delete'))"
+          :disabled="hasReleasesInUse || stackFleetManaged"
           @click="$emit('delete-stack', stack)"
         >
           <i class="icon icon-trash" />
@@ -59,13 +62,14 @@
             <span v-if="releaseK8sVersion(release)" class="release-k8s">
               (k8s {{ releaseK8sVersion(release) }})
             </span>
-            <span v-if="isReleaseInUse(release)" class="release-in-use" :title="t('clusterstacks.stacks.card.releaseInUse')">
+            <span v-if="!readOnly && isReleaseInUse(release)" class="release-in-use" :title="t('clusterstacks.stacks.card.releaseInUse')">
               <i class="icon icon-lock" />
             </span>
             <button
-              v-if="!isReleaseInUse(release)"
+              v-if="!readOnly"
               class="release-delete-btn"
-              :title="t('clusterstacks.stacks.card.deleteRelease')"
+              :title="isFleetManagedRelease(release) ? FLEET_MANAGED_TOOLTIP : t('clusterstacks.stacks.card.deleteRelease')"
+              :disabled="isReleaseInUse(release) || isFleetManagedRelease(release)"
               @click.stop="$emit('delete-release', release)"
             >
               &times;
@@ -79,6 +83,8 @@
 </template>
 
 <script>
+import { FLEET_MANAGED_TOOLTIP, isFleetManagedResource } from '../utils/fleet-management';
+
 export default {
   name: 'ClusterStackCard',
 
@@ -97,9 +103,21 @@ export default {
       type:    Set,
       default: () => new Set(),
     },
+    readOnly: {
+      type:    Boolean,
+      default: false,
+    },
   },
 
   computed: {
+    FLEET_MANAGED_TOOLTIP() {
+      return FLEET_MANAGED_TOOLTIP;
+    },
+
+    stackFleetManaged() {
+      return isFleetManagedResource(this.stack);
+    },
+
     hasReleasesInUse() {
       return this.releases.some((r) => this.usedReleaseNames.has(r.metadata?.name));
     },
@@ -167,11 +185,16 @@ export default {
       return this.usedReleaseNames.has(release.metadata?.name);
     },
 
+    isFleetManagedRelease(release) {
+      return isFleetManagedResource(release);
+    },
+
     releaseStatusClass(release) {
       const ready = release.status?.ready;
 
       if (ready === true) {
-        return this.isReleaseInUse(release) ? 'chip-success' : 'chip-unused';
+        // ReadOnly users (non-admin) don't need to distinguish in-use — always show green
+        return (this.readOnly || this.isReleaseInUse(release)) ? 'chip-success' : 'chip-unused';
       }
       if (ready === false) {
         return 'chip-error';

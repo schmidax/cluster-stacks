@@ -3,71 +3,42 @@
     <div class="form-section">
       <!-- Provider Type first -->
       <div class="form-row">
-        <label class="form-label" for="capi-type">
-          {{ t('clusterstacks.capiProviders.form.type') }}
-          <span class="required">*</span>
-        </label>
-        <div v-if="isEdit" class="form-input form-input-disabled">
-          {{ form.type }}
-        </div>
-        <select
+        <LabeledInput
+          v-if="isEdit"
+          :value="form.type"
+          :label="t('clusterstacks.capiProviders.form.type')"
+          :disabled="true"
+        />
+        <LabeledSelect
           v-else
-          id="capi-type"
-          v-model="form.type"
-          class="form-select"
-          @change="onTypeChange"
-        >
-          <option value="" disabled>
-            {{ t('clusterstacks.capiProviders.form.typePlaceholder') }}
-          </option>
-          <option
-            v-for="opt in providerTypes"
-            :key="opt.value"
-            :value="opt.value"
-          >
-            {{ opt.label }}
-          </option>
-        </select>
+          :value="form.type"
+          :label="t('clusterstacks.capiProviders.form.type')"
+          :placeholder="t('clusterstacks.capiProviders.form.typePlaceholder')"
+          :options="providerTypes"
+          @update:value="onTypeSelect"
+        />
       </div>
 
       <!-- Provider Name (searchable dropdown based on type) -->
       <div class="form-row">
-        <label class="form-label" for="capi-name">
-          {{ t('clusterstacks.capiProviders.form.name') }}
-          <span class="required">*</span>
-        </label>
-        <div v-if="isEdit" class="form-input form-input-disabled">
-          {{ form.name }}
-          <p class="form-hint">{{ t('clusterstacks.capiProviders.form.nameEditHint') }}</p>
-        </div>
-        <div v-else class="searchable-select-wrapper">
-          <input
-            id="capi-name"
-            v-model="nameSearch"
-            type="text"
-            class="form-input"
-            :disabled="!form.type"
+        <LabeledInput
+          v-if="isEdit"
+          :value="form.name"
+          :label="t('clusterstacks.capiProviders.form.name')"
+          :disabled="true"
+        />
+        <div v-else>
+          <LabeledSelect
+            :value="form.name"
+            :label="t('clusterstacks.capiProviders.form.name')"
             :placeholder="form.type ? t('clusterstacks.capiProviders.form.namePlaceholder') : t('clusterstacks.capiProviders.form.nameSelectTypFirst')"
-            autocomplete="off"
-            @focus="showNameDropdown = true"
-            @blur="onNameBlur"
-            @input="onNameInput"
+            :options="providerNameOptions"
+            :disabled="!form.type"
+            @update:value="onNameSelect"
           />
-          <div v-if="showNameDropdown && filteredProviderNames.length" class="dropdown-list">
-            <div
-              v-for="pname in filteredProviderNames"
-              :key="pname"
-              class="dropdown-item"
-              @mousedown.prevent="selectName(pname)"
-            >
-              {{ pname }}
-            </div>
-          </div>
-          <!-- Duplicate warning -->
           <p v-if="nameExists" class="form-error-inline">
             {{ t('clusterstacks.capiProviders.form.nameAlreadyExists') }}
           </p>
-          <!-- Providers loading state -->
           <p v-if="loadingProviders" class="form-hint">
             {{ t('clusterstacks.capiProviders.form.loadingProviders') }}
           </p>
@@ -76,40 +47,28 @@
 
       <!-- Resource Name (auto-computed, shown when creating) -->
       <div v-if="!isEdit && resourceName" class="form-row">
-        <label class="form-label">
-          {{ t('clusterstacks.capiProviders.form.resourceName') }}
-        </label>
-        <div class="form-input form-input-disabled">
-          {{ resourceName }}
-          <p class="form-hint">{{ t('clusterstacks.capiProviders.form.resourceNameHint') }}</p>
-        </div>
+        <LabeledInput
+          :value="resourceName"
+          :label="t('clusterstacks.capiProviders.form.resourceName')"
+          :disabled="true"
+        />
+        <p class="form-hint">{{ t('clusterstacks.capiProviders.form.resourceNameHint') }}</p>
       </div>
 
       <!-- Version -->
       <div class="form-row">
-        <label class="form-label" for="capi-version">
-          {{ t('clusterstacks.capiProviders.form.version') }}
-        </label>
-        <div v-if="providerVersions.length || providerVersionsLoading" class="version-select-row">
-          <select
-            id="capi-version"
-            v-model="form.version"
-            class="form-select"
-            :disabled="providerVersionsLoading"
-            @change="onProviderVersionChange"
-          >
-            <option value="">
-              {{ t('clusterstacks.capiProviders.form.versionLatest') }}
-            </option>
-            <option
-              v-for="ver in providerVersions"
-              :key="ver"
-              :value="ver"
-            >
-              {{ ver }}
-            </option>
-          </select>
+        <div class="version-select-row">
+          <div class="version-select-input">
+            <LabeledSelect
+              :value="selectedVersionValue"
+              :label="t('clusterstacks.capiProviders.form.version')"
+              :options="versionOptions"
+              :disabled="!hasProviderName || providerVersionsLoading"
+              @update:value="onVersionSelect"
+            />
+          </div>
           <button
+            v-if="hasProviderName"
             class="btn btn-sm role-secondary ml-5"
             :disabled="providerVersionsLoading"
             type="button"
@@ -118,14 +77,9 @@
             <i :class="providerVersionsLoading ? 'icon icon-spinner icon-spin' : 'icon icon-refresh'" />
           </button>
         </div>
-        <input
-          v-else
-          id="capi-version"
-          v-model="form.version"
-          type="text"
-          class="form-input"
-          :placeholder="t('clusterstacks.capiProviders.form.versionPlaceholder')"
-        />
+        <p v-if="!hasProviderName" class="form-hint mt-5">
+          {{ t('clusterstacks.capiProviders.form.nameSelectTypFirst') }}
+        </p>
         <p v-if="providerVersionsError" class="text-error mt-5">
           {{ providerVersionsError }}
         </p>
@@ -133,15 +87,9 @@
 
       <!-- Fetch Config URL (auto-populated from upstream provider list) -->
       <div class="form-row">
-        <label class="form-label" for="capi-fetch-url">
-          {{ t('clusterstacks.capiProviders.form.fetchConfigUrl') }}
-          <span class="form-optional">{{ t('clusterstacks.capiProviders.form.optional') }}</span>
-        </label>
-        <input
-          id="capi-fetch-url"
-          v-model="form.fetchConfigUrl"
-          type="text"
-          class="form-input"
+        <LabeledInput
+          v-model:value="form.fetchConfigUrl"
+          :label="t('clusterstacks.capiProviders.form.fetchConfigUrl')"
           :placeholder="t('clusterstacks.capiProviders.form.fetchConfigUrlPlaceholder')"
         />
         <p class="form-hint">
@@ -155,18 +103,9 @@
           {{ t('clusterstacks.capiProviders.form.features') }}
         </label>
         <div class="features-group">
-          <label class="checkbox-label">
-            <input v-model="form.features.clusterResourceSet" type="checkbox" />
-            clusterResourceSet
-          </label>
-          <label class="checkbox-label">
-            <input v-model="form.features.clusterTopology" type="checkbox" />
-            clusterTopology
-          </label>
-          <label class="checkbox-label">
-            <input v-model="form.features.machinePool" type="checkbox" />
-            machinePool
-          </label>
+          <Checkbox v-model:value="form.features.clusterResourceSet" label="clusterResourceSet" />
+          <Checkbox v-model:value="form.features.clusterTopology" label="clusterTopology" />
+          <Checkbox v-model:value="form.features.machinePool" label="machinePool" />
         </div>
       </div>
 
@@ -177,10 +116,7 @@
           <span class="form-optional">{{ t('clusterstacks.capiProviders.form.optional') }}</span>
         </label>
         <div class="features-group">
-          <label class="checkbox-label">
-            <input v-model="form.runtimeSDK" type="checkbox" />
-            RuntimeSDK
-          </label>
+          <Checkbox v-model:value="form.runtimeSDK" label="RuntimeSDK" />
           <span class="form-hint">{{ t('clusterstacks.capiProviders.form.runtimeSDKHint') }}</span>
         </div>
         <div v-if="!form.runtimeSDK" class="banner banner-warning mt-5">
@@ -193,19 +129,21 @@
             :key="idx"
             class="variable-row"
           >
-            <input
-              v-model="variable.name"
-              type="text"
-              class="form-input variable-input"
-              :placeholder="t('clusterstacks.capiProviders.form.variableNamePlaceholder')"
-            />
+            <div class="variable-input">
+              <LabeledInput
+                v-model:value="variable.name"
+                :label="idx === 0 ? 'Name' : ' '"
+                :placeholder="t('clusterstacks.capiProviders.form.variableNamePlaceholder')"
+              />
+            </div>
             <span class="variable-sep">=</span>
-            <input
-              v-model="variable.value"
-              type="text"
-              class="form-input variable-input"
-              :placeholder="t('clusterstacks.capiProviders.form.variableValuePlaceholder')"
-            />
+            <div class="variable-input">
+              <LabeledInput
+                v-model:value="variable.value"
+                :label="idx === 0 ? 'Value' : ' '"
+                :placeholder="t('clusterstacks.capiProviders.form.variableValuePlaceholder')"
+              />
+            </div>
             <button class="btn btn-sm role-secondary btn-remove-var" @click="removeVariable(idx)">
               &times;
             </button>
@@ -245,21 +183,19 @@
 
           <!-- Manifest URL -->
         <div v-if="orcMethod === 'manifest'" class="mt-5">
-          <input
-            v-model="orcManifestUrl"
-            type="text"
-            class="form-input"
+          <LabeledInput
+            v-model:value="orcManifestUrl"
+            label="Manifest URL"
             placeholder="https://github.com/k-orc/openstack-resource-controller/releases/latest/download/install.yaml"
           />
         </div>
 
         <!-- Helm (future) -->
         <div v-if="orcMethod === 'helm'" class="mt-5">
-          <input
-            v-model="orcHelmRepo"
-            type="text"
-            class="form-input"
-            disabled
+          <LabeledInput
+            v-model:value="orcHelmRepo"
+            label="Helm Repository"
+            :disabled="true"
             :placeholder="t('clusterstacks.capiProviders.form.orcHelmPlaceholder')"
           />
         </div>
@@ -278,19 +214,31 @@
       {{ error }}
     </div>
 
+    <div v-if="isFleetManagedExisting" class="fleet-managed-notice">
+      <i class="icon icon-warning" /> {{ fleetManagedTooltip }}
+    </div>
+
     <div class="form-actions">
       <button class="btn role-secondary" :disabled="saving" @click="$emit('cancel')">
         {{ t('clusterstacks.common.cancel') }}
       </button>
-      <button class="btn role-primary" :disabled="!isValid || saving || nameExists" @click="save">
-        <span v-if="saving">{{ t('clusterstacks.common.loading') }}</span>
-        <span v-else>{{ isEdit ? t('clusterstacks.capiProviders.form.saveEdit') : t('clusterstacks.capiProviders.form.save') }}</span>
-      </button>
+      <AsyncButton
+        :disabled="!isValid || saving || nameExists || isFleetManagedExisting"
+        :action-label="isEdit ? t('clusterstacks.capiProviders.form.saveEdit') : t('clusterstacks.capiProviders.form.save')"
+        :title="isFleetManagedExisting ? fleetManagedTooltip : ''"
+        @click="saveAction"
+      />
     </div>
   </div>
 </template>
 
 <script>
+import { LabeledInput } from '@components/Form/LabeledInput';
+import { Checkbox } from '@components/Form/Checkbox';
+import LabeledSelect from '@shell/components/form/LabeledSelect';
+import AsyncButton from '@shell/components/AsyncButton';
+import { FLEET_MANAGED_TOOLTIP, isFleetManagedResource } from '../utils/fleet-management';
+
 const PROVIDERS_GO_URL = 'https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/refs/heads/main/cmd/clusterctl/client/config/providers_client.go';
 
 // Fallback static list in case the URL is unreachable
@@ -388,6 +336,13 @@ function parseProvidersFromGo(content) {
 export default {
   name: 'CapiProviderForm',
 
+  components: {
+    AsyncButton,
+    Checkbox,
+    LabeledInput,
+    LabeledSelect,
+  },
+
   props: {
     existing: {
       type:    Object,
@@ -401,8 +356,6 @@ export default {
     return {
       saving:           false,
       error:            '',
-      nameSearch:       '',
-      showNameDropdown: false,
       nameExists:       false,
       loadingProviders: false,
       allProvidersByType: { ...FALLBACK_PROVIDERS },
@@ -475,12 +428,24 @@ export default {
   },
 
   computed: {
+    fleetManagedTooltip() {
+      return FLEET_MANAGED_TOOLTIP;
+    },
+
     isEdit() {
       return !!this.existing;
     },
 
+    isFleetManagedExisting() {
+      return this.isEdit && isFleetManagedResource(this.existing);
+    },
+
     isValid() {
       return !!this.form.name.trim() && !!this.form.type;
+    },
+
+    hasProviderName() {
+      return !!this.form.name.trim();
     },
 
     showOrcSection() {
@@ -496,6 +461,31 @@ export default {
       const m = this.form.fetchConfigUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
 
       return m ? { owner: m[1], repo: m[2] } : null;
+    },
+
+    providerNameOptions() {
+      return (this.allProvidersByType[this.form.type] || []).map((name) => ({
+        label: name,
+        value: name,
+      }));
+    },
+
+    versionOptions() {
+      if (!this.hasProviderName) {
+        return [];
+      }
+
+      return [
+        {
+          label: this.t('clusterstacks.capiProviders.form.versionLatest'),
+          value: '__latest__',
+        },
+        ...this.providerVersions.map((ver) => ({ label: ver, value: ver }))
+      ];
+    },
+
+    selectedVersionValue() {
+      return this.form.version || '__latest__';
     },
 
     // Auto-generated metadata.name used when creating a new CAPIProvider.
@@ -522,16 +512,6 @@ export default {
       return map;
     },
 
-    filteredProviderNames() {
-      const names = this.allProvidersByType[this.form.type] || [];
-      const q     = this.nameSearch;
-
-      if (!q) {
-        return names;
-      }
-
-      return names.filter((n) => n.toLowerCase().includes(q));
-    },
   },
 
   async created() {
@@ -539,6 +519,19 @@ export default {
   },
 
   methods: {
+    selectValue(input) {
+      if (input && typeof input === 'object' && Object.prototype.hasOwnProperty.call(input, 'value')) {
+        return input.value;
+      }
+
+      return input;
+    },
+
+    onTypeSelect(value) {
+      this.form.type = this.selectValue(value);
+      this.onTypeChange();
+    },
+
     applyExisting(ex) {
       if (!ex) {
         return;
@@ -578,7 +571,6 @@ export default {
         },
         variables: exVars.map((v) => ({ name: v.name || '', value: v.value || '' })),
       };
-      this.nameSearch = this.form.name;
     },
 
     async fetchProviders() {
@@ -622,41 +614,21 @@ export default {
     onTypeChange() {
       if (!this.isEdit) {
         this.form.name           = '';
-        this.nameSearch          = '';
         this.nameExists          = false;
         this.form.fetchConfigUrl = '';
       }
     },
 
-    onNameInput() {
-      // nameSearch drives filtering; sync form.name only if it exactly matches a known provider
-      const match = (this.allProvidersByType[this.form.type] || []).find(
-        (n) => n === this.nameSearch.trim()
-      );
+    onNameSelect(value) {
+      const normalized = String(this.selectValue(value) || '').trim();
 
-      this.form.name           = match || this.nameSearch.trim();
-      this.form.fetchConfigUrl = this.lookupProviderUrl(this.form.type, this.form.name);
-      this.nameExists          = false;
-    },
+      this.form.name = normalized;
+      this.form.fetchConfigUrl = this.lookupProviderUrl(this.form.type, normalized);
+      this.nameExists = false;
 
-    selectName(name) {
-      this.form.name           = name;
-      this.nameSearch          = name;
-      this.form.fetchConfigUrl = this.lookupProviderUrl(this.form.type, name);
-      this.showNameDropdown    = false;
-      this.checkNameExists();
-    },
-
-    onNameBlur() {
-      // Short delay so mousedown.prevent on dropdown items fires first
-      setTimeout(() => {
-        this.showNameDropdown    = false;
-        this.form.name           = this.nameSearch.trim();
-        this.form.fetchConfigUrl = this.lookupProviderUrl(this.form.type, this.form.name);
-        if (this.form.name) {
-          this.checkNameExists();
-        }
-      }, 150);
+      if (normalized) {
+        this.checkNameExists();
+      }
     },
 
     async checkNameExists() {
@@ -691,6 +663,11 @@ export default {
     },
 
     async save() {
+      if (this.isFleetManagedExisting) {
+        this.error = FLEET_MANAGED_TOOLTIP;
+        return;
+      }
+
       if (!this.isValid || this.nameExists) {
         return;
       }
@@ -770,6 +747,16 @@ export default {
         this.error = e?.message || this.t('clusterstacks.capiProviders.errors.save');
       } finally {
         this.saving = false;
+      }
+    },
+
+    async saveAction(buttonDone) {
+      try {
+        await this.save();
+        buttonDone?.(true);
+      } catch (e) {
+        buttonDone?.(false);
+        throw e;
       }
     },
 
@@ -929,6 +916,13 @@ export default {
       }
     },
 
+    onVersionSelect(value) {
+      const normalized = String(this.selectValue(value) || '').trim();
+
+      this.form.version = normalized === '__latest__' ? '' : normalized;
+      this.onProviderVersionChange();
+    },
+
     pluralize(kind) {
       const k = kind.toLowerCase();
 
@@ -1012,8 +1006,20 @@ export default {
   font-size: 0.85em;
 }
 
+.fleet-managed-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: #f59e0b;
+  color: #1c1100;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
 .form-error {
-  padding: 10px 14px;
   border: 1px solid var(--error);
   border-radius: 4px;
   background: var(--error-banner-bg, rgba(185, 28, 28, 0.1));

@@ -1,29 +1,71 @@
 clusterstacks:
+  provisioner:
+    label: ClusterStacks (OpenStack)
+    description: Kubernetes-Cluster mit ClusterStacks und OpenStack-Infrastruktur via CAPI erstellen.
+    credentialRequired: Bitte zuerst ein OpenStack-Projekt auswählen. Flavors, Netzwerke, Security Groups und Buckets werden live aus OpenStack geladen.
+    openstackProject: OpenStack-Projekt
+    connect: Verbinden
+    changeCredential: Wechseln
+    nodePools: Node Pools
+    controlPlaneTab: Control Plane
+    createKeyPair: SSH-Keypair anlegen
+    securityTitle: Sicherheit
+    selectedRules: Ausgewählte Security Group Rules
+    certSANsHint: Zusätzliche SANs sind optionale DNS-Namen/IPs für das API-Server-Zertifikat (kommagetrennt).
+
   nav:
     dashboard: Dashboard
     clusters: Cluster
     stacks: Stacks
     csoManagement: Management
-    openstack: OpenStack-Projekte
-    openstackGroup: OpenStack
-    openstackCredentials: Anmeldedaten
+    openstack: OpenStack
     openstackResources: Ressourcen
     openstackObjectstorage: Object Storage
     capiProviders: CAPI Provider
 
   dashboard:
     title: ClusterStacks Dashboard
-    description: Kubernetes-Cluster verwalten, die mit ClusterStacks und OpenStack erstellt wurden.
-    cards:
-      clusters:
-        title: Cluster
-        description: CAPI-verwaltete Kubernetes-Cluster anzeigen und verwalten.
-      stacks:
-        title: ClusterStacks
-        description: Verfügbare ClusterStack-Releases und Kubernetes-Versionen durchsuchen.
-      openstack:
-        title: OpenStack-Projekte
-        description: OpenStack-Anmeldedaten verwalten und Ressourcen anzeigen.
+    description: Rancher-native Übersicht für ClusterStacks-Abläufe über alle sichtbaren OpenStack-Projekte.
+    quickStart:
+      title: Quick Start
+      subtitleAdmin: "Schneller Einstieg für Admins: Projekte, Provider und Cluster zentral steuern."
+      subtitleTenant: "Schneller Einstieg für Mandanten: Projektzugang nutzen, Ressourcen prüfen und Cluster erstellen."
+      actions:
+        openstack:
+          title: OpenStack-Übersicht
+          description: Projekt- und Credential-Übersicht öffnen.
+        createCluster:
+          title: Cluster erstellen
+          description: Bereitstellung eines neuen Workload-Clusters starten.
+        management:
+          title: Management
+          description: CSO-Installation und RBAC-Helfer konfigurieren.
+        providers:
+          title: CAPI Provider
+          description: Installierte Provider-Controller prüfen und verwalten.
+        reviewResources:
+          title: Ressourcen prüfen
+          description: Quotas, Netzwerke und Object Storage pro Projekt prüfen.
+    overview:
+      title: Ressourcen-Übersicht
+      subtitle: Aktuelle Summen aus allen für dich sichtbaren Ressourcen.
+      metrics:
+        clusters: Cluster
+        stacks: ClusterStacks
+        projects: Projekte
+        credentials: Credentials
+        providers: CAPI Provider
+        provisioned: Bereitgestellt
+        other: sonstige
+    lists:
+      title: Cluster und Projekte
+      clusters: Letzte Cluster
+      credentials: Sichtbare Credentials
+      noClusters: Noch keine sichtbaren Cluster.
+      noCredentials: Noch keine sichtbaren Credentials.
+    links:
+      viewAllClusters: Alle Cluster anzeigen
+      viewAllCredentials: Alle Credentials anzeigen
 
   clusters:
     title: Cluster
@@ -89,6 +131,7 @@ clusterstacks:
       title: Control Plane
       compute: Compute-Einstellungen
       replicas: Replikate
+      replicasHaHint: Für HA/Quorum sind nur ungerade Replikat-Zahlen erlaubt (1, 3, 5, ...).
       flavor: VM-Flavor
       flavorPlaceholder: Flavor auswählen...
       rootDisk: Root-Disk (GiB)
@@ -186,6 +229,21 @@ clusterstacks:
     workerReplicas: Worker-Replikate (gesamt)
     workerPools: Worker-Pools
     controlPlaneDetail: Control-Plane-Details
+    replicas: Replikate
+    flavor: Flavor
+    rootDisk: Root-Datenträger
+    cni: CNI
+    apiServerLB: API-Server LB
+    image: Image
+    sshKey: SSH-Schlüssel
+    class: Klasse
+    classNamespace: Klassen-Namespace
+    namespace: Namespace
+    managedSecret: Verwaltetes Secret
+    clusterNetwork: Cluster-Netzwerk
+    podsCidr: Pods CIDR
+    servicesCidr: Services CIDR
+    serviceDomain: Service-Domain
     conditions: Bedingungen
     noConditions: Keine Bedingungen verfügbar.
     variables: Topologie-Variablen
@@ -201,7 +259,13 @@ clusterstacks:
       overview: Übersicht
       variables: Variablen
       snapshots: Snapshots
+      clusterstacks: ClusterStacks
       yaml: YAML
+    clusterStacksInfo: ClusterStacks-Informationen
+    workerPoolHeaders:
+      name: Name
+      replicas: Replikate
+      flavor: Flavor
     snapshots:
       title: ETCD-Snapshots
       description: Anzeigen und Verwalten von etcd-Snapshots für diesen Cluster. Snapshots sind für RKE2-Downstream-Cluster verfügbar.
@@ -211,6 +275,29 @@ clusterstacks:
       snapshotWip: Das Erstellen und Wiederherstellen von Snapshots wird in einer zukünftigen Rancher-Version verfügbar sein.
       noData: Keine Snapshots für diesen Cluster gefunden.
       capiHint: Bei CAPI-Clustern werden etcd-Backups von RKE2 im Workload-Cluster verwaltet und im konfigurierten S3/Swift-Bucket gespeichert.
+
+  clusterStatus:
+    title: Cluster-Erstellungsstatus
+    description: Cluster "{name}" wird im Hintergrund erstellt. Diese Seite zeigt den aktuellen CAPI- und Auto-Import-Status.
+    invalidContext: Cluster-Name oder Namespace fehlt. Öffnen Sie diese Seite erneut aus dem Cluster-Erstellungsflow.
+    capiStatus: CAPI-Status
+    observedGeneration: Beobachtete Generation
+    importStatus: Rancher Auto-Import
+    autoImport: Auto-Import
+    imported: Importiert
+    waiting: Warte auf Import
+    managementClusterId: Rancher-Cluster-ID
+    openClusterStacksDetail: ClusterStacks-Detail öffnen
+    openClusterStacksConfig: ClusterStacks-Konfiguration öffnen
+    openRancherOverview: Rancher-Cluster-Übersicht öffnen
+    dashboardAccess: Dashboard-Zugriff
+    fleetWorkspace: FleetWorkspace
+    rancherClusterOwner: Rancher Cluster-Besitzer
+    fleetNotSet: "Nicht gesetzt (aktuell: '{current}', erwartet: '{expected}')"
+    statusAssigned: Zugewiesen
+    statusPending: Automatische Zuweisung ausstehend
+    syncInProgress: Automatische Synchronisierung läuft.
+    syncDescription: Fleet-Workspace und Cluster-Owner-Bindings werden aus Projekt-Mitgliedschaften abgeglichen. Seite in wenigen Sekunden aktualisieren.
 
   stacks:
     title: ClusterStacks
@@ -250,8 +337,8 @@ clusterstacks:
     noProvider: Kein Provider
     noProviderHint: Verwenden, wenn kein externer CAPI-Infrastruktur-Provider benötigt wird.
     versions: Versionen
-    versionPlaceholder: "z.B. v1"
-    versionInvalid: "Version muss mit 'v' beginnen, gefolgt von Ziffern (z.B. v1, v2)."
+    versionPlaceholder: "z.B. v1, v7, v0-sha.abc123"
+    versionInvalid: "Version muss mit 'v' beginnen und darf Suffixe wie -ttl.123 oder -sha.abc123 enthalten (z.B. v1, v7, v0-ttl.1773126776, v0-sha.lvlvyfw)."
     addVersion: Version hinzufügen
     resourceNameHint: Ressourcenname (automatisch generiert)
     save: ClusterStack erstellen
@@ -425,6 +512,7 @@ clusterstacks:
     testError: Verbindung fehlgeschlagen
     uploadYaml: clouds.yaml hochladen
     forProject: "Projekt"
+    invalidProjectContext: Der URL-Projektkontext wurde ignoriert, da er nicht mit einem zugänglichen Rancher-Projekt oder der Credential-Namespace-Zuweisung übereinstimmt.
 
   projectMembers:
     title: Projektmitglieder
@@ -443,6 +531,13 @@ clusterstacks:
     valid: Quota reicht für diese Cluster-Konfiguration aus.
     error: "Cluster kann nicht erstellt werden: Quota überschritten."
     warning: "Warnung: Quota ist knapp."
+    legend:
+      currentUsed: Aktuell genutzt
+      freedByEdit: Durch Edit frei werdend
+      requested: Angefordert
+      buffer: Puffer (Rolling Update)
+      remaining: Verbleibend
+      overLimit: Über dem Limit
 
   errors:
     loadFlavors: Fehler beim Laden der Flavors
@@ -467,6 +562,16 @@ clusterstacks:
     switchWarning: "Achtung: Beim Speichern werden die Werte des anderen Providers geleert. Es können immer nur OCI- oder Git-Werte aktiv sein."
     saveSuccess: Konfiguration erfolgreich gespeichert.
     saveError: Konfiguration konnte nicht gespeichert werden.
+    rbacTitle: RBAC / Berechtigungen
+    capiRbacName: ClusterStacks CAPI-Zugriff
+    capiRbacDesc: RoleTemplate + ClusterRole für CAPI/ClusterStack CRD-Zugriff in Projekt-Namespaces. Wird automatisch Projektmitgliedern über den Mitglieder-Dialog zugewiesen.
+    reconcilerName: Automatischer Cluster-Zugriffs-Reconciler
+    reconcilerDesc: Stellt ein privilegiertes Deployment bereit, das importierte CAPI-Cluster kontinuierlich mit Projektmitgliedschaften abgleicht.
+    badgeInstalled: Installiert
+    badgeNotInstalled: Nicht installiert
+    installBtn: Installieren
+    removeBtn: Entfernen
+    unknown: Unbekannt
     confirmSave:
       title: Umkonfiguration bestätigen
       message: "Der Cluster Stack Operator wird mit den neuen Werten umkonfiguriert. Dabei wird ein Helm-Upgrade ausgeführt. Möchtest du fortfahren?"
@@ -537,6 +642,7 @@ clusterstacks:
     no: "Nein"
     enabled: Aktiviert
     disabled: Deaktiviert
+    permissionDenied: Nicht genügend Berechtigungen, um diese Seite anzuzeigen.
 
   capiProviders:
     title: CAPI Provider
@@ -598,3 +704,42 @@ clusterstacks:
       restartPod: Pod neustarten
     errors:
       save: CAPI Provider konnte nicht gespeichert werden.
+
+  credentialChange:
+    title: OpenStack-Projekt wechseln
+    message: "Sie sind dabei, Ihr OpenStack-Projekt zu wechseln. Alle ungespeicherten Änderungen auf dieser Seite gehen verloren."
+    from: "Von"
+    to: "Zu"
+    warning: Alle Formulardaten werden beim Wechsel des Projekts zurückgesetzt.
+    confirm: Projekt wechseln
+
+  dialogs:
+    createBucket: Bucket erstellen
+    editFolder: Ordner bearbeiten
+    bucketName: Bucket-Name
+    bucketNamePlaceholder: mein-etcd-backup-bucket
+    subfolderName: Neuer Unterordnername
+    subfolderPlaceholder: neuer-unterordner
+    bucketRequired: Bucket-Name ist erforderlich.
+    folderRequired: Ordnername ist erforderlich.
+    selectBucketFirst: Wählen Sie zuerst einen Bucket aus, bevor Sie einen Ordner erstellen.
+    noSubfolders: Keine Unterordner in diesem Pfad.
+    confirmDeleteFolder: "Ordner {name} und alle enthaltenen Objekte löschen?"
+    confirmDelete: Löschen bestätigen
+    createSubfolder: Unterordner erstellen
+    connectionNotReady: OpenStack-Verbindung ist nicht bereit.
+    failedCreate: "{type} konnte nicht erstellt werden: {error}"
+    up: Hoch
+    files: Dateien
+
+  keypairDialog:
+    title: OpenStack-Schlüsselpaar erstellen
+    name: Schlüsselpaar-Name
+    publicKeyUrl: Öffentlicher-Schlüssel-URL
+    publicKeyUrlPlaceholder: "https://github.com/<user>.keys"
+    publicKeyUrlHint: "Unterstützt Endpunkte wie https://github.com/<user>.keys oder GitLab /.keys URLs."
+    publicKey: Öffentlicher Schlüssel
+    publicKeyPlaceholder: "ssh-ed25519 AAAA... benutzer@host"
+    loadFromUrl: Von URL laden
+    loadingFromUrl: Wird geladen...
+    createBtn: Schlüsselpaar erstellen

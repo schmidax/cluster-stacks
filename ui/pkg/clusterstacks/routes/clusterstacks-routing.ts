@@ -4,10 +4,20 @@ import { PRODUCT_NAME, ROUTES } from '../config/clusterstacks';
 const CLUSTER_PREFIX = `/c/:cluster/${PRODUCT_NAME}`;
 
 const routes: RouteConfig[] = [
+  // Product root redirects to dashboard so dashboard does not stay active on every sub-route.
+  {
+    path:      `${CLUSTER_PREFIX}`,
+    redirect:  (to) => ({
+      name:   ROUTES.DASHBOARD,
+      params: to.params,
+      query:  to.query,
+    }),
+  },
+
   // Dashboard / Landing page
   {
     name:      ROUTES.DASHBOARD,
-    path:      `${CLUSTER_PREFIX}`,
+    path:      `${CLUSTER_PREFIX}/dashboard`,
     component: () => import(/* webpackChunkName: "clusterstacks-dashboard" */ '../pages/index.vue'),
     meta:      { product: PRODUCT_NAME },
   },
@@ -25,6 +35,14 @@ const routes: RouteConfig[] = [
     name:      ROUTES.CLUSTERS_CREATE,
     path:      `${CLUSTER_PREFIX}/clusters/create`,
     component: () => import(/* webpackChunkName: "clusterstacks-clusters-create" */ '../pages/clusters/create.vue'),
+    meta:      { product: PRODUCT_NAME },
+  },
+
+  // Cluster create status / progress
+  {
+    name:      ROUTES.CLUSTERS_STATUS,
+    path:      `${CLUSTER_PREFIX}/clusters/status`,
+    component: () => import(/* webpackChunkName: "clusterstacks-clusters-status" */ '../pages/clusters/status.vue'),
     meta:      { product: PRODUCT_NAME },
   },
 
@@ -61,18 +79,22 @@ const routes: RouteConfig[] = [
   },
 
 
-  // OpenStack credentials list (new canonical route)
+  // OpenStack overview (canonical route)
   {
     name:      ROUTES.OPENSTACK,
-    path:      `${CLUSTER_PREFIX}/openstack/credentials`,
-    component: () => import(/* webpackChunkName: "clusterstacks-openstack-credentials" */ '../pages/openstack-projects/credentials.vue'),
+    path:      `${CLUSTER_PREFIX}/openstack`,
+    component: () => import(/* webpackChunkName: "clusterstacks-openstack" */ '../pages/openstack-projects/index.vue'),
     meta:      { product: PRODUCT_NAME },
   },
 
-  // Redirect /openstack to /openstack/credentials
+  // Legacy OpenStack credentials route
   {
-    path:      `${CLUSTER_PREFIX}/openstack`,
-    redirect:  `${CLUSTER_PREFIX}/openstack/credentials`,
+    path:      `${CLUSTER_PREFIX}/openstack/credentials`,
+    redirect:  (to) => ({
+      name:   ROUTES.OPENSTACK,
+      params: to.params,
+      query:  to.query,
+    }),
   },
 
   // OpenStack credential create
@@ -83,20 +105,40 @@ const routes: RouteConfig[] = [
     meta:      { product: PRODUCT_NAME },
   },
 
-  // OpenStack resources overview
+  // OpenStack credential detail
   {
-    name:      ROUTES.OPENSTACK_RESOURCES,
-    path:      `${CLUSTER_PREFIX}/openstack/resources`,
-    component: () => import(/* webpackChunkName: "clusterstacks-openstack-resources" */ '../pages/openstack-projects/resources.vue'),
+    name:      ROUTES.OPENSTACK_DETAIL,
+    path:      `${CLUSTER_PREFIX}/openstack/detail`,
+    component: () => import(/* webpackChunkName: "clusterstacks-openstack-detail" */ '../pages/openstack-projects/detail.vue'),
     meta:      { product: PRODUCT_NAME },
   },
 
-  // OpenStack Object Storage
+  // OpenStack resources (legacy route)
+  {
+    name:      ROUTES.OPENSTACK_RESOURCES,
+    path:      `${CLUSTER_PREFIX}/openstack/resources`,
+    redirect:  (to) => ({
+      name:   ROUTES.OPENSTACK_DETAIL,
+      params: to.params,
+      query:  {
+        ...to.query,
+        tab: 'resources',
+      },
+    }),
+  },
+
+  // OpenStack Object Storage (legacy route)
   {
     name:      ROUTES.OPENSTACK_OBJECTSTORAGE,
     path:      `${CLUSTER_PREFIX}/openstack/objectstorage`,
-    component: () => import(/* webpackChunkName: "clusterstacks-openstack-objectstorage" */ '../pages/openstack-projects/objectstorage.vue'),
-    meta:      { product: PRODUCT_NAME },
+    redirect:  (to) => ({
+      name:   ROUTES.OPENSTACK_DETAIL,
+      params: to.params,
+      query:  {
+        ...to.query,
+        tab: 'object-storage',
+      },
+    }),
   },
 
   // CAPI Providers list

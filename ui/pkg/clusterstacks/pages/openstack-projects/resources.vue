@@ -2,16 +2,14 @@
   <div class="openstack-resources-page">
     <!-- Top area: credential selector + quota overview -->
     <div class="top-area">
-      <div class="credential-selector">
-        <label class="credential-label">{{ t('clusterstacks.openstack.resources.credential') }}</label>
-        <select v-model="selectedCredentialName" class="credential-select" @change="onCredentialChange">
-          <option value="" disabled>
-            {{ t('clusterstacks.openstack.resources.selectCredential') }}
-          </option>
-          <option v-for="cred in credentials" :key="cred.name" :value="cred.name">
-            {{ cred.name }} — {{ cred.authUrl }}
-          </option>
-        </select>
+      <div v-if="!embedded" class="credential-selector">
+        <LabeledSelect
+          :value="selectedCredentialName"
+          :label="t('clusterstacks.openstack.resources.credential')"
+          :placeholder="t('clusterstacks.openstack.resources.selectCredential')"
+          :options="credentialOptions"
+          @update:value="onCredentialChange"
+        />
       </div>
 
       <!-- Quota overview -->
@@ -23,26 +21,31 @@
       </div>
       <div v-else-if="activeCredential && quotaSections.length" class="quota-overview">
         <h2 class="quota-overview-title">{{ t('clusterstacks.openstack.resources.quotas.title') }}</h2>
-        <div v-for="section in quotaSections" :key="section.title" class="quota-section">
-          <h3 class="quota-section-title">{{ section.title }}</h3>
-          <div class="quota-grid">
-            <div v-for="item in section.items" :key="item.label" class="quota-card">
-              <div class="quota-label">{{ item.label }}</div>
-              <div class="quota-bar-wrap">
-                <div
-                  class="quota-bar-fill"
-                  :style="{ width: item.pct + '%', background: item.color }"
-                />
-              </div>
-              <div class="quota-values">
-                {{ item.used }} / {{ item.limit }}
-                <span v-if="item.rawLimit !== -1" class="quota-available">
-                  ({{ item.available }} {{ t('clusterstacks.openstack.resources.quotas.available') }})
-                </span>
-              </div>
+        <div class="quota-sections">
+          <SimpleBox v-for="section in quotaSections" :key="section.title" class="quota-section-gauge">
+            <h3 class="quota-section-title">{{ section.title }}</h3>
+            <div class="quota-section-items">
+              <ConsumptionGauge
+                v-for="item in section.items"
+                :key="item.id"
+                class="quota-item-gauge"
+                :resource-name="item.label"
+                :capacity="item.gauge.total"
+                :used="item.gauge.useful"
+                :used-as-resource-name="true"
+                :color-stops="quotaColorStops"
+              >
+                <template #title="{ formattedPercentage }">
+                  <span class="quota-item-title">{{ item.label }}</span>
+                  <span class="quota-item-values">
+                    {{ item.gauge.formattedUseful }} / {{ item.gauge.formattedTotal }}
+                    <span class="quota-item-percent"><i>/&nbsp;</i>{{ item.rawLimit === -1 ? '∞' : formattedPercentage }}</span>
+                  </span>
+                </template>
+              </ConsumptionGauge>
             </div>
+          </SimpleBox>
           </div>
-        </div>
       </div>
     </div>
 
@@ -60,13 +63,32 @@
 </template>
 
 <script>
+import ConsumptionGauge from '@shell/components/ConsumptionGauge';
+import LabeledSelect from '@shell/components/form/LabeledSelect';
+import SimpleBox from '@shell/components/SimpleBox';
 import OpenstackResourceList from '../../components/OpenstackResourceList.vue';
 import { OpenStackApiService, parseCloudsYaml } from '../../services/openstack-api';
 
 export default {
   name: 'OpenstackResourcesPage',
 
-  components: { OpenstackResourceList },
+  props: {
+    forcedCredentialNamespace: {
+      type:    String,
+      default: '',
+    },
+    embedded: {
+      type:    Boolean,
+      default: false,
+    },
+  },
+
+  components: {
+    ConsumptionGauge,
+    LabeledSelect,
+    OpenstackResourceList,
+    SimpleBox,
+  },
 
   data() {
     return {
@@ -86,6 +108,21 @@ export default {
   },
 
   computed: {
+    quotaColorStops() {
+      return {
+        0:  '--os-gauge-green',
+        70: '--os-gauge-orange',
+        90: '--os-gauge-red',
+      };
+    },
+
+    credentialOptions() {
+      return this.credentials.map((credential) => ({
+        label: `${ credential.name }${ credential.authUrl ? ` — ${ credential.authUrl }` : '' }`,
+        value: credential.name,
+      }));
+    },
+
     quotaSections() {
       const sections = [];
       const { computeQuota, networkQuota, volumeQuota } = this.quotas;
@@ -96,14 +133,28 @@ export default {
         }
         const rawUsed  = q.in_use ?? 0;
         const rawLimit = q.limit  ?? -1;
-        const pct      = rawLimit === -1 ? 0 : Math.min(100, Math.round((rawUsed / rawLimit) * 100));
-        const color    = pct >= 90 ? '#c0392b' : pct >= 70 ? '#e67e22' : '#27ae60';
         const used     = formatFn ? formatFn(rawUsed) : String(rawUsed);
         const limit    = rawLimit === -1 ? '∞' : (formatFn ? formatFn(rawLimit) : String(rawLimit));
         const available = rawLimit === -1 ? '' : (formatFn ? formatFn(rawLimit - rawUsed) : String(rawLimit - rawUsed));
+        const gaugeTotal = rawLimit === -1 ? Math.max(rawUsed, 1) : rawLimit;
+        const gaugeUseful = rawLimit === -1 ? 0 : rawUsed;
+        const id = `${ label }-${ rawUsed }-${ rawLimit }`;
 
         return {
-          label, used, limit, available, rawUsed, rawLimit, pct, color,
+          id,
+          label,
+          used,
+          limit,
+          available,
+          rawUsed,
+          rawLimit,
+          gauge: {
+            total:           gaugeTotal,
+            useful:          gaugeUseful,
+            formattedUseful: used,
+            formattedTotal:  limit,
+            units:           '',
+          },
         };
       };
 
@@ -149,6 +200,20 @@ export default {
     },
   },
 
+  watch: {
+    '$route.query': {
+      deep: true,
+      handler() {
+        if (!this.embedded) {
+          this.applyCredentialSelectionFromState();
+        }
+      },
+    },
+    forcedCredentialNamespace() {
+      this.applyCredentialSelectionFromState();
+    },
+  },
+
   async mounted() {
     await this.loadCredentials();
   },
@@ -156,16 +221,37 @@ export default {
   methods: {
     async loadCredentials() {
       try {
-        const nsResponse = await this.$store.dispatch('management/request', {
-          method: 'GET',
-          url:    '/api/v1/namespaces',
-        });
-        const csoNamespaces = (nsResponse?.items || []).filter(
-          (ns) => ns.metadata.name.startsWith('cso-') && ns.metadata.name !== 'cso-system',
-        );
+        let visibleNamespaces = [];
+
+        try {
+          const nsResponse = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    '/api/v1/namespaces',
+          });
+          visibleNamespaces = (nsResponse?.items || []).filter(
+            (ns) => {
+              const nsName = ns.metadata?.name || '';
+
+              return nsName.startsWith('cso-') && nsName !== 'cso-system';
+            },
+          );
+        } catch {
+          const nsList = await this.$store.dispatch('management/findAll', {
+            type: 'namespace',
+          });
+
+          visibleNamespaces = (nsList || [])
+            .filter((ns) => {
+              const nsName = ns.metadata?.name || '';
+
+              return nsName.startsWith('cso-') && nsName !== 'cso-system';
+            })
+            .map((ns) => ({ metadata: { name: ns.metadata?.name || '' } }))
+            .filter((ns) => ns.metadata.name);
+        }
 
         const results = await Promise.allSettled(
-          csoNamespaces.map((ns) => this.$store.dispatch('management/request', {
+          visibleNamespaces.map((ns) => this.$store.dispatch('management/request', {
             method: 'GET',
             url:    `/api/v1/namespaces/${ns.metadata.name}/secrets/openstack`,
           })),
@@ -192,18 +278,78 @@ export default {
             };
           });
 
-        // Auto-select the first credential if available
-        if (this.credentials.length && !this.selectedCredentialName) {
-          this.selectedCredentialName = this.credentials[0].name;
-          this.activeCredential = this.credentials[0];
-          this.loadQuotas();
-        }
+        this.applyCredentialSelectionFromState();
       } catch {
         this.credentials = [];
       }
     },
 
-    onCredentialChange() {
+    requestedCredential() {
+      const requestedNamespace = String(this.$route.query?.namespace || '').trim();
+      const requestedName = String(this.$route.query?.credential || '').trim();
+
+      if (!requestedNamespace && !requestedName) {
+        return null;
+      }
+
+      return this.credentials.find((credential) => {
+        if (requestedNamespace && credential.namespace === requestedNamespace) {
+          return true;
+        }
+
+        if (requestedName && credential.name === requestedName) {
+          return true;
+        }
+
+        return false;
+      }) || null;
+    },
+
+    applyCredentialSelectionFromState() {
+      if (!this.credentials.length) {
+        this.selectedCredentialName = '';
+        this.activeCredential = null;
+
+        return;
+      }
+
+      const forcedNamespace = String(this.forcedCredentialNamespace || '').trim();
+      const forced = forcedNamespace
+        ? this.credentials.find((credential) => credential.namespace === forcedNamespace) || null
+        : null;
+
+      if (this.embedded && forcedNamespace && !forced) {
+        this.selectedCredentialName = '';
+        this.activeCredential = null;
+
+        return;
+      }
+
+      const requested = this.requestedCredential();
+      const current = this.credentials.find((credential) => credential.name === this.selectedCredentialName) || null;
+      const next = forced || requested || current || this.credentials[0];
+
+      if (!next) {
+        return;
+      }
+
+      const hasChanged = this.activeCredential?.namespace !== next.namespace;
+
+      this.selectedCredentialName = next.name;
+      this.activeCredential = next;
+
+      if (hasChanged) {
+        this.quotas = {
+          computeQuota: null,
+          networkQuota: null,
+          volumeQuota:  null,
+        };
+        this.loadQuotas();
+      }
+    },
+
+    onCredentialChange(value) {
+      this.selectedCredentialName = value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'value') ? value.value : value;
       const cred = this.credentials.find((c) => c.name === this.selectedCredentialName);
 
       this.activeCredential = cred || null;
@@ -213,6 +359,15 @@ export default {
         volumeQuota:  null,
       };
       if (cred) {
+        if (!this.embedded) {
+          const nextQuery = {
+            ...this.$route.query,
+            credential: cred.name,
+            namespace:  cred.namespace,
+          };
+
+          this.$router.replace({ query: nextQuery }).catch(() => {});
+        }
         this.loadQuotas();
       }
     },
@@ -250,7 +405,6 @@ export default {
     t(key) {
       return this.$store.getters['i18n/t'](key);
     },
-
     formatMiB(mib) {
       if (mib < 0) {
         return String(mib);
@@ -281,6 +435,10 @@ export default {
 
 <style lang="scss" scoped>
 .openstack-resources-page {
+  --os-gauge-green: #2e7d32;
+  --os-gauge-orange: #ef6c00;
+  --os-gauge-red: #c62828;
+
   padding: 20px;
 }
 
@@ -314,59 +472,73 @@ export default {
   margin-bottom: 12px;
 }
 
-.quota-section {
-  margin-bottom: 20px;
-}
-
 .quota-section-title {
-  font-size: 0.95em;
+  font-size: 0.9em;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--muted);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
-.quota-grid {
+.quota-sections {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: 1fr;
+  grid-column-gap: 12px;
+  grid-row-gap: 12px;
 }
 
-.quota-card {
-  background: var(--box-bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.quota-section-gauge {
   padding: 12px;
 }
 
-.quota-label {
+.quota-section-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quota-item-title {
+  font-size: 12px;
   font-weight: 600;
-  margin-bottom: 6px;
-  font-size: 0.9em;
 }
 
-.quota-bar-wrap {
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 6px;
-}
-
-.quota-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
-}
-
-.quota-values {
-  font-size: 0.85em;
-  color: var(--body-text);
-}
-
-.quota-available {
+.quota-item-values {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
   color: var(--muted);
+}
+
+.quota-item-percent {
+  font-weight: 600;
+}
+
+.quota-item-gauge {
+  :deep(.numbers) {
+    font-size: 12px;
+    align-items: center;
+  }
+
+  :deep(.numbers h4) {
+    margin: 0;
+    font-size: 12px;
+  }
+
+  :deep(.numbers .percentage i) {
+    margin-right: 4px;
+  }
+
+  :deep(.mt-10) {
+    margin-top: 6px;
+  }
+}
+
+@media only screen and (min-width: 992px) {
+  .quota-sections {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .bottom-area {

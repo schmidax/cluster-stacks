@@ -1,6 +1,18 @@
 <template>
   <div class="objectstorage-page">
-    <h1>{{ t('clusterstacks.objectstorage.title') }}</h1>
+    <header v-if="!embedded" class="with-subheader">
+      <div class="title">
+        <h1 class="m-0">{{ t('clusterstacks.objectstorage.title') }}</h1>
+      </div>
+      <div class="sub-header">
+        <!-- Slot content -->
+      </div>
+      <div class="actions-container">
+        <div class="actions">
+          <!-- Slot content -->
+        </div>
+      </div>
+    </header>
 
     <!-- Loading state -->
     <div v-if="loading" class="loading">
@@ -14,7 +26,7 @@
 
     <!-- Credential cards -->
     <div v-else class="credential-cards">
-      <div class="global-actions">
+      <div v-if="!embedded" class="global-actions">
         <button class="btn btn-sm role-secondary" @click="toggleAll">
           {{ allExpanded ? t('clusterstacks.objectstorage.collapseAll') : t('clusterstacks.objectstorage.expandAll') }}
         </button>
@@ -27,10 +39,10 @@
         v-for="cred in credentials"
         :key="cred.namespace"
         class="credential-card"
-        :class="{ expanded: expandedCredentials[cred.namespace] }"
+        :class="{ expanded: embedded || expandedCredentials[cred.namespace] }"
       >
         <!-- Card header -->
-        <div class="card-header" @click="toggleCredential(cred.namespace)">
+        <div v-if="!embedded" class="card-header" @click="toggleCredential(cred.namespace)">
           <i class="icon" :class="expandedCredentials[cred.namespace] ? 'icon-chevron-down' : 'icon-chevron-right'" />
           <div class="header-info">
             <span class="cred-name">{{ cred.name }}</span>
@@ -50,7 +62,7 @@
         </div>
 
         <!-- Expanded content -->
-        <div v-if="expandedCredentials[cred.namespace]" class="card-body">
+        <div v-if="embedded || expandedCredentials[cred.namespace]" class="card-body">
           <!-- Loading per credential -->
           <div v-if="cred.loadingData" class="loading-inline">
             <i class="icon icon-spinner icon-spin" /> {{ t('clusterstacks.common.loading') }}
@@ -160,13 +172,14 @@
 
               <!-- Create container -->
               <div class="create-container-row">
-                <input
-                  v-model="newContainerNames[cred.namespace]"
-                  type="text"
-                  class="no-resize no-ease"
-                  :placeholder="t('clusterstacks.objectstorage.containerNamePlaceholder')"
-                  @keyup.enter="createContainer(cred)"
-                />
+                <div class="create-container-input">
+                  <LabeledInput
+                    :value="newContainerNames[cred.namespace] || ''"
+                    :label="t('clusterstacks.objectstorage.containerName')"
+                    :placeholder="t('clusterstacks.objectstorage.containerNamePlaceholder')"
+                    @update:value="newContainerNames = { ...newContainerNames, [cred.namespace]: $event }"
+                  />
+                </div>
                 <button
                   class="btn btn-sm role-primary"
                   :disabled="!newContainerNames[cred.namespace] || cred.creatingContainer"
@@ -186,10 +199,24 @@
 </template>
 
 <script>
+import { LabeledInput } from '@components/Form/LabeledInput';
 import { OpenStackApiService, parseCloudsYaml } from '../../services/openstack-api';
 
 export default {
   name: 'ObjectStoragePage',
+
+  props: {
+    forcedCredentialNamespace: {
+      type:    String,
+      default: '',
+    },
+    embedded: {
+      type:    Boolean,
+      default: false,
+    },
+  },
+
+  components: { LabeledInput },
 
   data() {
     return {
@@ -209,6 +236,12 @@ export default {
     },
   },
 
+  watch: {
+    forcedCredentialNamespace() {
+      this.refresh();
+    },
+  },
+
   async mounted() {
     await this.loadAll();
   },
@@ -224,18 +257,38 @@ export default {
       this.loading = true;
 
       try {
-        // Load all cso-* namespaces
-        const nsResponse = await this.$store.dispatch('management/request', {
-          method: 'GET',
-          url:    '/api/v1/namespaces',
-        });
-        const csoNamespaces = (nsResponse?.items || []).filter(
-          (ns) => ns.metadata.name.startsWith('cso-') && ns.metadata.name !== 'cso-system',
-        );
+        let visibleNamespaces = [];
+
+        try {
+          const nsResponse = await this.$store.dispatch('management/request', {
+            method: 'GET',
+            url:    '/api/v1/namespaces',
+          });
+          visibleNamespaces = (nsResponse?.items || []).filter(
+            (ns) => {
+              const nsName = ns.metadata?.name || '';
+
+              return nsName.startsWith('cso-') && nsName !== 'cso-system';
+            },
+          );
+        } catch {
+          const nsList = await this.$store.dispatch('management/findAll', {
+            type: 'namespace',
+          });
+
+          visibleNamespaces = (nsList || [])
+            .filter((ns) => {
+              const nsName = ns.metadata?.name || '';
+
+              return nsName.startsWith('cso-') && nsName !== 'cso-system';
+            })
+            .map((ns) => ({ metadata: { name: ns.metadata?.name || '' } }))
+            .filter((ns) => ns.metadata.name);
+        }
 
         // Load credentials + clusters per namespace
         const results = await Promise.allSettled(
-          csoNamespaces.map(async(ns) => {
+          visibleNamespaces.map(async(ns) => {
             const nsName = ns.metadata.name;
             const [secretResult, clusterResult] = await Promise.allSettled([
               this.$store.dispatch('management/request', {
@@ -244,7 +297,7 @@ export default {
               }),
               this.$store.dispatch('management/request', {
                 method: 'GET',
-                url:    `/apis/cluster.x-k8s.io/v1beta1/namespaces/${ nsName }/clusters`,
+                url:    `/apis/cluster.x-k8s.io/v1beta2/namespaces/${ nsName }/clusters`,
               }),
             ]);
 
@@ -298,14 +351,21 @@ export default {
           });
         }
 
-        this.credentials = creds;
+        const forcedNamespace = String(this.forcedCredentialNamespace || '').trim();
+        const filteredCreds = forcedNamespace
+          ? creds.filter((cred) => cred.namespace === forcedNamespace)
+          : creds;
+
+        this.credentials = filteredCreds;
 
         // Pre-load summary data (EC2 + container counts) for all credentials
         await this.loadAllSummaries();
 
-        // Auto-expand and load data for single credential
-        if (creds.length === 1) {
-          this.toggleCredential(creds[0].namespace);
+        // Auto-expand and load data for single credential in standalone mode.
+        if (!this.embedded && this.credentials.length === 1) {
+          this.toggleCredential(this.credentials[0].namespace);
+        } else if (this.embedded && this.credentials.length === 1) {
+          await this.loadCredentialData(this.credentials[0]);
         }
       } catch {
         this.credentials = [];
@@ -619,10 +679,27 @@ export default {
 <style lang="scss" scoped>
 .objectstorage-page {
   padding: 20px;
+}
 
-  h1 {
-    margin-bottom: 16px;
-  }
+header {
+  margin-bottom: 20px;
+}
+
+.title {
+  align-items: center;
+  display: flex;
+}
+
+header.with-subheader {
+  grid-template-areas:
+    'type-banner type-banner'
+    'title actions'
+    'sub-header sub-header'
+    'state-banner state-banner';
+}
+
+.sub-header {
+  grid-area: sub-header;
 }
 
 .loading {
@@ -848,20 +925,14 @@ export default {
   gap: 8px;
   margin-top: 12px;
   align-items: center;
+}
 
-  input {
-    flex: 1;
-    max-width: 300px;
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--border-radius);
-    background: var(--input-bg);
-    color: var(--input-text);
-    font-size: 13px;
+.create-container-input {
+  flex: 1;
+  max-width: 360px;
 
-    &::placeholder {
-      color: var(--muted);
-    }
+  :deep(.labeled-input) {
+    margin-bottom: 0;
   }
 }
 

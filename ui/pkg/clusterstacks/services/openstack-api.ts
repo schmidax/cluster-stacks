@@ -281,6 +281,181 @@ export class OpenStackApiService {
     });
   }
 
+  private async swiftBulkDelete(paths: string[]): Promise<boolean> {
+    const cleaned = paths
+      .map((path) => String(path || '').trim().replace(/^\/+/, ''))
+      .filter(Boolean);
+
+    if (!cleaned.length) {
+      return true;
+    }
+
+    await this.getToken();
+    const baseUrl = this.getEndpointUrl('object-store');
+
+    if (!baseUrl) {
+      throw new Error('No endpoint found for service type: object-store');
+    }
+
+    const encodedPaths = cleaned.map((path) => encodeURI(`/${ path }`));
+    const proxyUrl = `${ PROXY_BASE }/${ baseUrl.replace(/^https?:\/\//, '') }?bulk-delete`;
+
+    try {
+      const response = await this.store.dispatch('management/request', {
+        method: 'POST',
+        url:    proxyUrl,
+        headers: {
+          'X-Auth-Token': this.token,
+          'Content-Type': 'text/plain',
+          Accept:         'application/json',
+        },
+        data:                 encodedPaths.join('\n'),
+        redirectUnauthorized: false,
+      });
+
+      let body: any = response;
+
+      if (typeof response === 'string') {
+        try {
+          body = JSON.parse(response);
+        } catch {
+          return false;
+        }
+      }
+
+      const errors = Array.isArray(body?.Errors) ? body.Errors : [];
+
+      // A response body with no failing sub-operations means success.
+      return !errors.length;
+    } catch (e) {
+      // If bulk-delete middleware is not enabled, caller falls back to single deletes.
+      if (
+        this.isHttpStatus(e, 400)
+        || this.isHttpStatus(e, 404)
+        || this.isHttpStatus(e, 405)
+        || this.isHttpStatus(e, 501)
+      ) {
+        return false;
+      }
+
+      throw e;
+    }
+  }
+
+  private async deleteObjectsIndividually(containerName: string, objectNames: string[]): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer || !objectNames.length) {
+      return;
+    }
+
+    const encodedContainer = encodeURIComponent(cleanContainer);
+
+    for (const objName of objectNames) {
+      const encodedObjectPath = objName
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+
+      try {
+        await this.makeRequest('object-store', `/${ encodedContainer }/${ encodedObjectPath }`, 'DELETE');
+      } catch (e) {
+        // Object may already be gone (eventual consistency / parallel delete).
+        if (!this.isHttpStatus(e, 404)) {
+          throw e;
+        }
+      }
+    }
+  }
+
+  private async deleteObjectsInBatches(containerName: string, objectNames: string[]): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer || !objectNames.length) {
+      return;
+    }
+
+    const chunkSize = 10000;
+
+    for (let i = 0; i < objectNames.length; i += chunkSize) {
+      const chunk = objectNames.slice(i, i + chunkSize);
+      const bulkPaths = chunk.map((objName) => `${ cleanContainer }/${ objName }`);
+      const deletedByBulk = await this.swiftBulkDelete(bulkPaths);
+
+      if (!deletedByBulk) {
+        await this.deleteObjectsIndividually(cleanContainer, chunk);
+      }
+    }
+  }
+
+  private isHttpStatus(error: any, statusCode: number): boolean {
+    const status = Number(
+      error?.status
+      ?? error?.response?.status
+      ?? error?.data?.status
+      ?? error?._status
+      ?? 0,
+    );
+
+    return status === statusCode;
+  }
+
+  private async listContainerObjects(containerName: string): Promise<string[]> {
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer) {
+      return [];
+    }
+
+    const encodedContainer = encodeURIComponent(cleanContainer);
+    const objectNames: string[] = [];
+    let marker = '';
+
+    while (true) {
+      const markerParam = marker ? `&marker=${ encodeURIComponent(marker) }` : '';
+      const response = await this.makeRequest(
+        'object-store',
+        `/${ encodedContainer }?format=json&limit=1000${ markerParam }`,
+      );
+
+      if (!Array.isArray(response) || !response.length) {
+        break;
+      }
+
+      for (const item of response) {
+        const name = String(item?.name || '').replace(/^\/+/, '');
+
+        if (name) {
+          objectNames.push(name);
+          marker = name;
+        }
+      }
+
+      if (response.length < 1000) {
+        break;
+      }
+    }
+
+    return objectNames;
+  }
+
+  private async purgeContainer(containerName: string): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer) {
+      return;
+    }
+
+    const objectNames = await this.listContainerObjects(cleanContainer);
+
+    if (!objectNames.length) {
+      return;
+    }
+
+    await this.deleteObjectsInBatches(cleanContainer, objectNames);
+
+  }
+
   // ─── Nova (Compute) ───────────────────────────────────────────────────────
 
   async getFlavors(): Promise<OpenStackFlavor[]> {
@@ -301,6 +476,17 @@ export class OpenStackApiService {
   async getKeyPairs(): Promise<OpenStackKeyPair[]> {
     const response = await this.makeRequest('compute', '/os-keypairs');
     return (response.keypairs || []).map((kp: any) => kp.keypair);
+  }
+
+  async createKeyPair(name: string, publicKey: string): Promise<OpenStackKeyPair> {
+    const response = await this.makeRequest('compute', '/os-keypairs', 'POST', {
+      keypair: {
+        name,
+        public_key: publicKey,
+      },
+    });
+
+    return response.keypair;
   }
 
   async getAvailabilityZones(): Promise<string[]> {
@@ -413,8 +599,180 @@ export class OpenStackApiService {
     await this.makeRequest('object-store', `/${containerName}`, 'PUT');
   }
 
+  async listContainerFolders(containerName: string): Promise<string[]> {
+    const stats = await this.listContainerFolderStats(containerName);
+
+    return stats.map((entry) => entry.path);
+  }
+
+  async listContainerFolderStats(containerName: string): Promise<Array<{ path: string; fileCount: number }>> {
+    if (!containerName) {
+      return [];
+    }
+
+    const encodedContainer = encodeURIComponent(containerName);
+    const markerName = '._rancher_folder_marker';
+    const folderSet = new Set<string>();
+    const fileCounts: Record<string, number> = {};
+    let marker = '';
+
+    while (true) {
+      const markerParam = marker ? `&marker=${ encodeURIComponent(marker) }` : '';
+      const response = await this.makeRequest(
+        'object-store',
+        `/${ encodedContainer }?format=json&limit=1000${ markerParam }`,
+      );
+
+      if (!Array.isArray(response) || !response.length) {
+        break;
+      }
+
+      for (const item of response) {
+        const rawName = String(item?.name || '').replace(/^\/+|\/+$/g, '');
+
+        if (!rawName) {
+          continue;
+        }
+
+        const isFolderMarker = rawName.endsWith(`/${ markerName }`) || rawName === markerName;
+        const parts = rawName.split('/').filter(Boolean);
+
+        if (parts.length > 1) {
+          for (let i = 1; i < parts.length; i++) {
+            folderSet.add(parts.slice(0, i).join('/'));
+          }
+        }
+
+        if (!isFolderMarker && !rawName.endsWith('/')) {
+          for (let i = 1; i < parts.length; i++) {
+            const folderPath = parts.slice(0, i).join('/');
+
+            fileCounts[folderPath] = (fileCounts[folderPath] || 0) + 1;
+          }
+        }
+
+        marker = rawName;
+      }
+
+      if (response.length < 1000) {
+        break;
+      }
+    }
+
+    return Array.from(folderSet)
+      .sort()
+      .map((path) => ({ path, fileCount: fileCounts[path] || 0 }));
+  }
+
+  async createFolder(containerName: string, folderPath: string): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+    const cleanFolder = (folderPath || '').trim().replace(/^\/+|\/+$/g, '');
+
+    if (!cleanContainer || !cleanFolder) {
+      return;
+    }
+
+    // Swift has pseudo-folders only; create a marker object inside the prefix.
+    const encodedPath = `${ cleanFolder
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/') }/${ encodeURIComponent('._rancher_folder_marker') }`;
+
+    await this.getToken();
+
+    const baseUrl = this.getEndpointUrl('object-store');
+
+    if (!baseUrl) {
+      throw new Error('No endpoint found for service type: object-store');
+    }
+
+    const proxyUrl = `${PROXY_BASE}/${baseUrl.replace(/^https?:\/\//, '')}/${encodeURIComponent(cleanContainer)}/${encodedPath}`;
+
+    await this.store.dispatch('management/request', {
+      method: 'PUT',
+      url:    proxyUrl,
+      headers: {
+        'X-Auth-Token': this.token,
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': '0',
+      },
+      data:                 '',
+      redirectUnauthorized: false,
+    });
+  }
+
+  async deleteFolder(containerName: string, folderPath: string): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+    const cleanFolder = (folderPath || '').trim().replace(/^\/+|\/+$/g, '');
+
+    if (!cleanContainer || !cleanFolder) {
+      return;
+    }
+
+    const encodedContainer = encodeURIComponent(cleanContainer);
+    const prefix = `${ cleanFolder }/`;
+    let marker = '';
+    const objectNames: string[] = [];
+
+    while (true) {
+      const markerParam = marker ? `&marker=${ encodeURIComponent(marker) }` : '';
+      const response = await this.makeRequest(
+        'object-store',
+        `/${ encodedContainer }?format=json&limit=1000&prefix=${ encodeURIComponent(prefix) }${ markerParam }`,
+      );
+
+      if (!Array.isArray(response) || !response.length) {
+        break;
+      }
+
+      for (const item of response) {
+        const name = String(item?.name || '').replace(/^\/+/, '');
+
+        if (name) {
+          objectNames.push(name);
+          marker = name;
+        }
+      }
+
+      if (response.length < 1000) {
+        break;
+      }
+    }
+
+    await this.deleteObjectsInBatches(cleanContainer, objectNames);
+  }
+
   async deleteContainer(containerName: string): Promise<void> {
-    await this.makeRequest('object-store', `/${containerName}`, 'DELETE');
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer) {
+      return;
+    }
+
+    try {
+      await this.makeRequest('object-store', `/${ encodeURIComponent(cleanContainer) }`, 'DELETE');
+    } catch (e) {
+      if (this.isHttpStatus(e, 404)) {
+        return;
+      }
+
+      // Swift returns 409 Conflict for non-empty containers.
+      if (!this.isHttpStatus(e, 409)) {
+        throw e;
+      }
+
+      await this.purgeContainer(cleanContainer);
+
+      try {
+        await this.makeRequest('object-store', `/${ encodeURIComponent(cleanContainer) }`, 'DELETE');
+      } catch (finalDeleteError) {
+        // If another process already removed the container, treat as success.
+        if (!this.isHttpStatus(finalDeleteError, 404)) {
+          throw finalDeleteError;
+        }
+      }
+    }
   }
 
   async getSwiftEndpoint(): Promise<string | null> {

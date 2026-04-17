@@ -1,13 +1,29 @@
 <template>
   <div class="capi-providers-page">
-    <div class="page-header">
-      <h1>{{ t('clusterstacks.capiProviders.title') }}</h1>
-      <button class="btn role-primary" @click="createProvider">
-        {{ t('clusterstacks.capiProviders.createBtn') }}
-      </button>
-    </div>
+    <header class="with-subheader">
+      <div class="title">
+        <h1 class="m-0">{{ t('clusterstacks.capiProviders.title') }}</h1>
+      </div>
+      <div class="sub-header">
+        <!-- Slot content -->
+      </div>
+      <div class="actions-container">
+        <div class="actions">
+          <button v-if="hasAdminAccess" class="btn role-primary mr-10" @click="createProvider">
+            {{ t('clusterstacks.capiProviders.createBtn') }}
+          </button>
+          <button class="btn role-secondary" @click="loadProviders">
+            <i class="icon icon-refresh" /> {{ t('clusterstacks.common.refresh') }}
+          </button>
+        </div>
+      </div>
+    </header>
 
-    <div v-if="loading" class="no-data">
+    <Banner v-if="hasAdminAccess === false" color="warning" icon="icon-warning" class="mb-20">
+      {{ t('clusterstacks.common.permissionDenied') }}
+    </Banner>
+
+    <div v-else-if="loading" class="no-data">
       {{ t('clusterstacks.common.loading') }}
     </div>
 
@@ -45,30 +61,37 @@
             </span>
           </td>
           <td class="cell-actions">
-            <button
-              class="btn btn-sm btn-edit"
-              @click="editProvider(provider)"
-            >
-              {{ t('clusterstacks.common.edit') }}
-            </button>
-            <button
-              class="btn btn-sm btn-logs"
-              @click="openPodPicker(provider, 'logs')"
-            >
-              {{ t('clusterstacks.capiProviders.logs.viewLogs') }}
-            </button>
-            <button
-              class="btn btn-sm btn-restart"
-              @click="openPodPicker(provider, 'restart')"
-            >
-              {{ t('clusterstacks.capiProviders.logs.restartProvider') }}
-            </button>
-            <button
-              class="btn btn-sm btn-delete"
-              @click="requestDelete(provider)"
-            >
-              {{ t('clusterstacks.common.delete') }}
-            </button>
+            <div class="action-buttons">
+              <span v-if="provider.fleetManaged" class="fleet-managed-badge" :title="fleetManagedTooltip">{{ fleetManagedTooltip }}</span>
+              <button
+                class="btn btn-sm btn-edit"
+                :disabled="provider.fleetManaged"
+                :title="provider.fleetManaged ? fleetManagedTooltip : ''"
+                @click="editProvider(provider)"
+              >
+                {{ t('clusterstacks.common.edit') }}
+              </button>
+              <button
+                class="btn btn-sm btn-logs"
+                @click="openPodPicker(provider, 'logs')"
+              >
+                {{ t('clusterstacks.capiProviders.logs.viewLogs') }}
+              </button>
+              <button
+                class="btn btn-sm btn-restart"
+                @click="openPodPicker(provider, 'restart')"
+              >
+                {{ t('clusterstacks.capiProviders.logs.restartProvider') }}
+              </button>
+              <button
+                class="btn btn-sm btn-delete"
+                :disabled="provider.fleetManaged"
+                :title="provider.fleetManaged ? fleetManagedTooltip : ''"
+                @click="requestDelete(provider)"
+              >
+                {{ t('clusterstacks.common.delete') }}
+              </button>
+            </div>
           </td>
         </tr>
       </tbody>
@@ -122,7 +145,7 @@
                   <td class="pod-name">{{ pod.metadata.name }}</td>
                   <td>
                     <span class="phase-badge" :class="phaseClass(pod)">
-                      {{ pod.status.phase || 'Unknown' }}
+                      {{ pod.status.phase || t('clusterstacks.cso.unknown') }}
                     </span>
                   </td>
                   <td>{{ podReady(pod) }}</td>
@@ -156,15 +179,18 @@
 <script>
 import { ROUTES } from '../../config/clusterstacks';
 import ConfirmDeleteDialog from '../../components/ConfirmDeleteDialog.vue';
+import Banner from '@components/Banner/Banner.vue';
+import { FLEET_MANAGED_TOOLTIP, isFleetManagedResource } from '../../utils/fleet-management';
 
 export default {
   name: 'CapiProvidersList',
 
-  components: { ConfirmDeleteDialog },
+  components: { Banner, ConfirmDeleteDialog },
 
   data() {
     return {
       loading:          true,
+      hasAdminAccess:   null,
       providers:        [],
       showDeleteDialog: false,
       pendingDelete:    null,
@@ -179,6 +205,15 @@ export default {
   },
 
   async mounted() {
+    const isAdmin = this.isAdminUser();
+
+    this.hasAdminAccess = isAdmin;
+
+    if (!isAdmin) {
+      this.loading = false;
+      return;
+    }
+
     await this.loadProviders();
     // Poll every 10 s so provider status updates automatically
     this._pollTimer = setInterval(() => this.loadProviders(), 10000);
@@ -188,7 +223,18 @@ export default {
     clearInterval(this._pollTimer);
   },
 
+  computed: {
+    fleetManagedTooltip() {
+      return FLEET_MANAGED_TOOLTIP;
+    },
+  },
+
   methods: {
+    isAdminUser() {
+      const schema = this.$store.getters['management/schemaFor']('management.cattle.io.setting');
+      return !!(schema?.resourceMethods || []).includes('PUT');
+    },
+
     async loadProviders() {
       // Only show full loading spinner on the initial load, not on poll refreshes
       const isInitial = !this.providers.length;
@@ -214,6 +260,7 @@ export default {
             type:      item.spec?.type || '',
             version:   item.spec?.version || '',
             ready:     readyCond?.status === 'True',
+            fleetManaged: isFleetManagedResource(item),
             raw:       item,
           };
         });
@@ -229,6 +276,10 @@ export default {
     },
 
     editProvider(provider) {
+      if (provider?.fleetManaged) {
+        return;
+      }
+
       this.$router.push({
         name:  ROUTES.CAPI_PROVIDERS_CREATE,
         query: { namespace: provider.namespace, name: provider.name },
@@ -236,6 +287,7 @@ export default {
     },
 
     async openPodPicker(provider, mode) {
+
       this.podPickerDialog = {
         show:    true,
         mode,
@@ -335,6 +387,10 @@ export default {
     },
 
     requestDelete(provider) {
+      if (provider?.fleetManaged) {
+        return;
+      }
+
       this.pendingDelete    = provider;
       this.showDeleteDialog = true;
     },
@@ -390,12 +446,29 @@ export default {
   padding: 20px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
+header {
+  margin-bottom: 20px;
 }
+
+header.with-subheader {
+  grid-template-areas:
+    'type-banner type-banner'
+    'title actions'
+    'sub-header sub-header'
+    'state-banner state-banner';
+}
+
+.title {
+  align-items: center;
+  display: flex;
+}
+
+.sub-header {
+  grid-area: sub-header;
+}
+
+// Banner component handles permission warning - no custom banner CSS needed
+
 
 .no-data {
   padding: 40px;
@@ -443,6 +516,28 @@ export default {
 .cell-actions {
   text-align: right;
   white-space: nowrap;
+  min-width: 300px;
+}
+
+// fleet-banner-row / fleet-banner-inline removed – badge used instead
+
+.action-buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.fleet-managed-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f59e0b;
+  color: #1c1100;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .type-badge {

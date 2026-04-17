@@ -7,7 +7,7 @@
  */
 
 import { OpenStackApiService } from './openstack-api';
-import { OpenStackQuota, NetworkQuota } from '../types/openstack';
+import { OpenStackQuota, NetworkQuota, VolumeQuota } from '../types/openstack';
 
 export interface ClusterRequirements {
   controlPlaneReplicas: number;
@@ -23,12 +23,39 @@ export interface ClusterRequirements {
   workerRamMb: number;
   bastionCpus?: number;
   bastionRamMb?: number;
+  controlPlaneRootDiskGb?: number;
+  workerRootDiskGb?: number;
+  bastionRootDiskGb?: number;
+}
+
+export interface ExistingClusterResources {
+  instances: number;
+  cpus: number;
+  ramMb: number;
+  diskGb: number;
+}
+
+export interface QuotaMetric {
+  label: string;
+  used: number;
+  reserved: number;
+  limit: number;
+  unit: string;
+  requested?: number;
+  buffer?: number;
+  projected?: number;
+  freed?: number;
 }
 
 export interface QuotaValidationResult {
   valid: boolean;
   warnings: string[];
   errors: string[];
+  cpu?: QuotaMetric;
+  ram?: QuotaMetric;
+  instances?: QuotaMetric;
+  disk?: QuotaMetric;
+  hasCredentials?: boolean;
 }
 
 // Rolling-update headroom: keep enough spare capacity for +1 of each
@@ -41,15 +68,18 @@ export async function validateQuota(
   api: OpenStackApiService,
   requirements: ClusterRequirements,
   projectId?: string,
+  existingResources?: ExistingClusterResources,
 ): Promise<QuotaValidationResult> {
   const result: QuotaValidationResult = {
     valid:    true,
     warnings: [],
     errors:   [],
+    hasCredentials: false,
   };
 
   let computeQuota: OpenStackQuota | null = null;
   let networkQuota: NetworkQuota | null = null;
+  let volumeQuota: VolumeQuota | null = null;
 
   try {
     computeQuota = await api.getComputeQuota(projectId);
@@ -63,81 +93,239 @@ export async function validateQuota(
     result.warnings.push(`Could not fetch network quota: ${e?.message || e}`);
   }
 
+  try {
+    volumeQuota = await api.getVolumeQuota(projectId);
+  } catch (e: any) {
+    result.warnings.push(`Could not fetch volume quota: ${e?.message || e}`);
+  }
+
+  // Set hasCredentials to true if we successfully fetched any quota data
+  if (computeQuota || volumeQuota) {
+    result.hasCredentials = true;
+  }
+
   if (computeQuota) {
-    checkComputeQuota(computeQuota, requirements, result);
+    checkComputeQuota(computeQuota, requirements, result, existingResources);
+  } else {
+    // Set default empty metrics if compute quota failed
+    result.cpu = {
+      label: 'vCPU',
+      used: 0,
+      reserved: 0,
+      limit: 0,
+      unit: '',
+    };
+    result.ram = {
+      label: 'RAM',
+      used: 0,
+      reserved: 0,
+      limit: 0,
+      unit: 'MiB',
+    };
+    result.instances = {
+      label: 'Instances',
+      used: 0,
+      reserved: 0,
+      limit: 0,
+      unit: '',
+    };
   }
 
   if (networkQuota) {
     checkNetworkQuota(networkQuota, requirements, result);
   }
 
+  if (volumeQuota) {
+    checkVolumeQuota(volumeQuota, requirements, result, existingResources);
+  }
+
+  if (!result.disk) {
+    // Set default empty storage metric if volume quota failed or not available
+    result.disk = {
+      label: 'Storage',
+      used: 0,
+      reserved: 0,
+      limit: 0,
+      unit: 'GB',
+    };
+  }
+
   return result;
+}
+
+export function getDefaultQuotaResult(): QuotaValidationResult {
+  return {
+    valid: true,
+    warnings: [],
+    errors: [],
+    hasCredentials: false,
+    cpu: {
+      label: 'vCPU',
+      used: 0,
+      reserved: 0,
+      limit: 0,
+      unit: '',
+    },
+    ram: {
+      label: 'RAM',
+      used: 0,
+      reserved: 0,
+      limit: 0,
+      unit: 'MiB',
+    },
+    instances: {
+      label: 'Instances',
+      used: 0,
+      reserved: 0,
+      limit: 0,
+      unit: '',
+    },
+    disk: {
+      label: 'Disk Space',
+      used: 0,
+      reserved: 0,
+      limit: 0,
+      unit: 'GB',
+    },
+  };
 }
 
 function checkComputeQuota(
   quota: OpenStackQuota,
   req: ClusterRequirements,
   result: QuotaValidationResult,
+  existing?: ExistingClusterResources,
 ): void {
-  // Total VMs needed including rolling-update buffer
-  const cpNodes = req.controlPlaneReplicas + ROLLING_UPDATE_BUFFER;
-  const workerNodes = req.workerReplicas + ROLLING_UPDATE_BUFFER;
-  const bastionNodes = req.bastionEnabled ? 1 : 0;
-  const totalVms = cpNodes + workerNodes + bastionNodes;
+  // Cluster nodes without rolling-update buffer
+  const cpNodesBase = req.controlPlaneReplicas;
+  const workerNodesBase = req.workerReplicas;
+  const bastionNodesBase = req.bastionEnabled ? 1 : 0;
+  const baseVms = cpNodesBase + workerNodesBase + bastionNodesBase;
 
-  // Total vCPUs needed
-  const totalCpus =
-    cpNodes * req.controlPlaneCpus +
-    workerNodes * req.workerCpus +
-    bastionNodes * (req.bastionCpus || 0);
+  // Base resources (cluster itself)
+  const baseCpus =
+    cpNodesBase * req.controlPlaneCpus +
+    workerNodesBase * req.workerCpus +
+    bastionNodesBase * (req.bastionCpus || 0);
+  const baseRamMb =
+    cpNodesBase * req.controlPlaneRamMb +
+    workerNodesBase * req.workerRamMb +
+    bastionNodesBase * (req.bastionRamMb || 0);
 
-  // Total RAM needed (MiB)
-  const totalRamMb =
-    cpNodes * req.controlPlaneRamMb +
-    workerNodes * req.workerRamMb +
-    bastionNodes * (req.bastionRamMb || 0);
+  // Buffer resources (rolling update: only the largest VM, not all)
+  const largestVmCpus = Math.max(
+    req.controlPlaneCpus || 0,
+    req.workerCpus || 0,
+    req.bastionCpus || 0,
+  );
+  const largestVmRamMb = Math.max(
+    req.controlPlaneRamMb || 0,
+    req.workerRamMb || 0,
+    req.bastionRamMb || 0,
+  );
+  const bufferVms = 1; // Only one VM for rolling update
+  const bufferCpus = largestVmCpus;
+  const bufferRamMb = largestVmRamMb;
 
-  // Instance check
+  // When editing, subtract resources the existing cluster already uses
+  // (they are already counted in OpenStack's in_use numbers)
+  const existVms = existing?.instances || 0;
+  const existCpus = existing?.cpus || 0;
+  const existRamMb = existing?.ramMb || 0;
+
+  // Net change: positive = need more, negative = freeing resources
+  const requestedVms = Math.max(0, baseVms - existVms);
+  const requestedCpus = Math.max(0, baseCpus - existCpus);
+  const requestedRamMb = Math.max(0, baseRamMb - existRamMb);
+  const freedVms = Math.max(0, existVms - baseVms);
+  const freedCpus = Math.max(0, existCpus - baseCpus);
+  const freedRamMb = Math.max(0, existRamMb - baseRamMb);
+
+  // Total additional resources needed (net of existing)
+  const neededVms = requestedVms + bufferVms;
+  const neededCpus = requestedCpus + bufferCpus;
+  const neededRamMb = requestedRamMb + bufferRamMb;
+
+  const currentInstances = quota.instances.in_use + quota.instances.reserved;
+  const currentCpus = quota.cores.in_use + quota.cores.reserved;
+  const currentRamMb = quota.ram.in_use + quota.ram.reserved;
+
+  // Store metric data with base and buffer separated
+  result.instances = {
+    label: 'Instances',
+    used: currentInstances,
+    reserved: 0,
+    limit: quota.instances.limit,
+    unit: '',
+    requested: requestedVms,
+    buffer: bufferVms,
+    freed: freedVms,
+    projected: currentInstances - freedVms + requestedVms + bufferVms,
+  };
+  result.cpu = {
+    label: 'vCPU',
+    used: currentCpus,
+    reserved: 0,
+    limit: quota.cores.limit,
+    unit: '',
+    requested: requestedCpus,
+    buffer: bufferCpus,
+    freed: freedCpus,
+    projected: currentCpus - freedCpus + requestedCpus + bufferCpus,
+  };
+  result.ram = {
+    label: 'RAM',
+    used: currentRamMb,
+    reserved: 0,
+    limit: quota.ram.limit,
+    unit: 'MiB',
+    requested: requestedRamMb,
+    buffer: bufferRamMb,
+    freed: freedRamMb,
+    projected: currentRamMb - freedRamMb + requestedRamMb + bufferRamMb,
+  };
+
+  // Instance check – freed resources become available for the net request
   if (quota.instances.limit > 0) {
-    const available = quota.instances.limit - quota.instances.in_use - quota.instances.reserved;
-    if (available < totalVms) {
+    const available = quota.instances.limit - quota.instances.in_use - quota.instances.reserved + freedVms;
+    if (available < neededVms) {
       result.valid = false;
       result.errors.push(
-        `Not enough instance quota. Need ${totalVms} (incl. rolling update buffer), only ${available} available.`,
+        `Not enough instance quota. Need ${neededVms} additional (incl. rolling update buffer), only ${available} available.`,
       );
-    } else if (isLow(available - totalVms, quota.instances.limit)) {
+    } else if (isLow(available - neededVms, quota.instances.limit)) {
       result.warnings.push(
-        `Instance quota is running low after cluster creation: ${available - totalVms} remaining of ${quota.instances.limit}.`,
+        `Instance quota is running low after changes: ${available - neededVms} remaining of ${quota.instances.limit}.`,
       );
     }
   }
 
   // CPU check
   if (quota.cores.limit > 0) {
-    const available = quota.cores.limit - quota.cores.in_use - quota.cores.reserved;
-    if (available < totalCpus) {
+    const available = quota.cores.limit - quota.cores.in_use - quota.cores.reserved + freedCpus;
+    if (available < neededCpus) {
       result.valid = false;
       result.errors.push(
-        `Not enough vCPU quota. Need ${totalCpus} (incl. rolling update buffer), only ${available} available.`,
+        `Not enough vCPU quota. Need ${neededCpus} additional (incl. rolling update buffer), only ${available} available.`,
       );
-    } else if (isLow(available - totalCpus, quota.cores.limit)) {
+    } else if (isLow(available - neededCpus, quota.cores.limit)) {
       result.warnings.push(
-        `vCPU quota is running low after cluster creation: ${available - totalCpus} remaining of ${quota.cores.limit}.`,
+        `vCPU quota is running low after changes: ${available - neededCpus} remaining of ${quota.cores.limit}.`,
       );
     }
   }
 
   // RAM check
   if (quota.ram.limit > 0) {
-    const available = quota.ram.limit - quota.ram.in_use - quota.ram.reserved;
-    if (available < totalRamMb) {
+    const available = quota.ram.limit - quota.ram.in_use - quota.ram.reserved + freedRamMb;
+    if (available < neededRamMb) {
       result.valid = false;
       result.errors.push(
-        `Not enough RAM quota. Need ${formatRam(totalRamMb)} (incl. rolling update buffer), only ${formatRam(available)} available.`,
+        `Not enough RAM quota. Need ${formatRam(neededRamMb)} additional (incl. rolling update buffer), only ${formatRam(available)} available.`,
       );
-    } else if (isLow(available - totalRamMb, quota.ram.limit)) {
+    } else if (isLow(available - neededRamMb, quota.ram.limit)) {
       result.warnings.push(
-        `RAM quota is running low after cluster creation: ${formatRam(available - totalRamMb)} remaining of ${formatRam(quota.ram.limit)}.`,
+        `RAM quota is running low after changes: ${formatRam(available - neededRamMb)} remaining of ${formatRam(quota.ram.limit)}.`,
       );
     }
   }
@@ -149,6 +337,69 @@ function checkComputeQuota(
     if (available < needed) {
       result.valid = false;
       result.errors.push(`Not enough floating IP quota. Need ${needed}, only ${available} available.`);
+    }
+  }
+}
+
+function checkVolumeQuota(
+  quota: VolumeQuota,
+  req: ClusterRequirements,
+  result: QuotaValidationResult,
+  existing?: ExistingClusterResources,
+): void {
+  if (!quota.gigabytes) {
+    return;
+  }
+
+  const cpNodesBase = req.controlPlaneReplicas;
+  const workerNodesBase = req.workerReplicas;
+  const bastionNodesBase = req.bastionEnabled ? 1 : 0;
+
+  const baseDiskGb =
+    cpNodesBase * (req.controlPlaneRootDiskGb || 0) +
+    workerNodesBase * (req.workerRootDiskGb || 0) +
+    bastionNodesBase * (req.bastionRootDiskGb || 0);
+
+  // Buffer resources (rolling update: only the largest VM disk)
+  const largestVmDiskGb = Math.max(
+    req.controlPlaneRootDiskGb || 0,
+    req.workerRootDiskGb || 0,
+    req.bastionRootDiskGb || 0,
+  );
+  const bufferDiskGb = largestVmDiskGb;
+
+  // When editing, subtract existing cluster disk usage
+  const existDiskGb = existing?.diskGb || 0;
+  const requestedDiskGb = Math.max(0, baseDiskGb - existDiskGb);
+  const freedDiskGb = Math.max(0, existDiskGb - baseDiskGb);
+  const neededDiskGb = requestedDiskGb + bufferDiskGb;
+
+  const currentDiskGb = quota.gigabytes.in_use + quota.gigabytes.reserved;
+
+  result.disk = {
+    label: 'Disk Space',
+    used: currentDiskGb,
+    reserved: 0,
+    limit: quota.gigabytes.limit,
+    unit: 'GB',
+    requested: requestedDiskGb,
+    buffer: bufferDiskGb,
+    freed: freedDiskGb,
+    projected: currentDiskGb - freedDiskGb + requestedDiskGb + bufferDiskGb,
+  };
+
+  if (quota.gigabytes.limit > 0) {
+    const available = quota.gigabytes.limit - quota.gigabytes.in_use - quota.gigabytes.reserved + freedDiskGb;
+
+    if (available < neededDiskGb) {
+      result.valid = false;
+      result.errors.push(
+        `Not enough storage quota. Need ${neededDiskGb} GB additional (incl. rolling update buffer), only ${available} GB available.`,
+      );
+    } else if (isLow(available - neededDiskGb, quota.gigabytes.limit)) {
+      result.warnings.push(
+        `Storage quota is running low after changes: ${available - neededDiskGb} GB remaining of ${quota.gigabytes.limit} GB.`,
+      );
     }
   }
 }

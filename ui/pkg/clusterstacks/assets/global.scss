@@ -25,3 +25,43 @@
     content: '' !important;
   }
 }
+
+// ClusterStacks page heading consistency across all plugin pages.
+.clusterstacks-dashboard,
+.cso-management-page,
+.openstack-page,
+.objectstorage-page,
+.cluster-detail-page,
+.cluster-create-page,
+.cluster-status-page,
+.openstack-resources-page,
+.capi-providers-page,
+.capi-provider-create-page,
+.openstack-detail-page,
+.credential-create-page,
+.clusterstacks-page,
+.clusterstack-create-page,
+.clusters-page {
+  .page-header > h1,
+  .dashboard-header > h1,
+  .status-header > h1,
+  .detail-header h1 {
+    margin: 0;
+    font-size: 28px;
+    line-height: 1.25;
+    font-weight: 600;
+  }
+}
+
+// Shared, rancher-native permission warning banner used on all gated pages.
+.clusterstacks-permission-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  background: var(--warning-banner-bg, rgba(244, 175, 61, 0.14));
+  border: 1px solid var(--warning, #f4af3d);
+  color: var(--text, inherit);
+}

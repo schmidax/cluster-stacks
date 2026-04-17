@@ -13,11 +13,10 @@
           <p class="dialog-hint">
             {{ t('clusterstacks.dialog.delete.typeHint', { name: confirmationValue }) }}
           </p>
-          <input
+          <LabeledInput
             ref="input"
-            v-model="typed"
-            type="text"
-            class="dialog-input"
+            v-model:value="typed"
+            label="Confirmation"
             :placeholder="confirmationValue"
             @keydown.enter="submit"
             @keydown.esc="cancel"
@@ -42,10 +41,14 @@
 </template>
 
 <script>
+import { LabeledInput } from '@components/Form/LabeledInput';
+
 let _uid = 0;
 
 export default {
   name: 'ConfirmDeleteDialog',
+
+  components: { LabeledInput },
 
   props: {
     isOpen: {
@@ -74,7 +77,10 @@ export default {
       if (val) {
         this.typed = '';
         this.$nextTick(() => {
-          this.$refs.input?.focus();
+          const inputRef = this.$refs.input;
+          const inputEl = inputRef?.$el?.querySelector?.('input') || inputRef?.querySelector?.('input');
+
+          inputEl?.focus?.();
         });
       }
     },
