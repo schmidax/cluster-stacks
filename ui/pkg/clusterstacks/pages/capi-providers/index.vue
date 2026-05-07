@@ -1,0 +1,734 @@
+<template>
+  <div class="capi-providers-page">
+    <header class="with-subheader">
+      <div class="title">
+        <h1 class="m-0">{{ t('clusterstacks.capiProviders.title') }}</h1>
+      </div>
+      <div class="sub-header">
+        <!-- Slot content -->
+      </div>
+      <div class="actions-container">
+        <div class="actions">
+          <button v-if="hasAdminAccess" class="btn role-primary mr-10" @click="createProvider">
+            {{ t('clusterstacks.capiProviders.createBtn') }}
+          </button>
+          <button class="btn role-secondary" @click="loadProviders">
+            <i class="icon icon-refresh" /> {{ t('clusterstacks.common.refresh') }}
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <Banner v-if="hasAdminAccess === false" color="warning" icon="icon-warning" class="mb-20">
+      {{ t('clusterstacks.common.permissionDenied') }}
+    </Banner>
+
+    <div v-else-if="loading" class="no-data">
+      {{ t('clusterstacks.common.loading') }}
+    </div>
+
+    <div v-else-if="!providers.length" class="no-data">
+      {{ t('clusterstacks.capiProviders.noData') }}
+    </div>
+
+    <table v-else class="provider-table">
+      <thead>
+        <tr>
+          <th>{{ t('clusterstacks.capiProviders.table.name') }}</th>
+          <th>{{ t('clusterstacks.capiProviders.table.type') }}</th>
+          <th>{{ t('clusterstacks.capiProviders.table.version') }}</th>
+          <th>{{ t('clusterstacks.capiProviders.table.namespace') }}</th>
+          <th>{{ t('clusterstacks.capiProviders.table.status') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="provider in providers" :key="provider.uid">
+          <td class="cell-name">{{ provider.name }}</td>
+          <td>
+            <span class="type-badge" :class="`type-${provider.type.toLowerCase()}`">
+              {{ provider.type }}
+            </span>
+          </td>
+          <td>{{ provider.version || t('clusterstacks.common.na') }}</td>
+          <td class="cell-mono">{{ provider.namespace }}</td>
+          <td>
+            <span
+              class="status-badge"
+              :class="provider.ready ? 'status-ready' : 'status-pending'"
+            >
+              {{ provider.ready ? t('clusterstacks.capiProviders.table.ready') : t('clusterstacks.capiProviders.table.notReady') }}
+            </span>
+          </td>
+          <td class="cell-actions">
+            <div class="action-buttons">
+              <span v-if="provider.fleetManaged" class="fleet-managed-badge" :title="fleetManagedTooltip">{{ fleetManagedTooltip }}</span>
+              <button
+                class="btn btn-sm btn-edit"
+                :disabled="provider.fleetManaged"
+                :title="provider.fleetManaged ? fleetManagedTooltip : ''"
+                @click="editProvider(provider)"
+              >
+                {{ t('clusterstacks.common.edit') }}
+              </button>
+              <button
+                class="btn btn-sm btn-logs"
+                @click="openPodPicker(provider, 'logs')"
+              >
+                {{ t('clusterstacks.capiProviders.logs.viewLogs') }}
+              </button>
+              <button
+                class="btn btn-sm btn-restart"
+                @click="openPodPicker(provider, 'restart')"
+              >
+                {{ t('clusterstacks.capiProviders.logs.restartProvider') }}
+              </button>
+              <button
+                class="btn btn-sm btn-delete"
+                :disabled="provider.fleetManaged"
+                :title="provider.fleetManaged ? fleetManagedTooltip : ''"
+                @click="requestDelete(provider)"
+              >
+                {{ t('clusterstacks.common.delete') }}
+              </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <ConfirmDeleteDialog
+      :is-open="showDeleteDialog"
+      :confirmation-value="pendingDelete ? pendingDelete.name : ''"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
+
+    <!-- Pod picker dialog (shared for logs and restart) -->
+    <transition name="dialog-fade">
+      <div v-if="podPickerDialog.show" class="logs-overlay" @mousedown.self="closePodPicker">
+        <div class="logs-dialog">
+          <div class="logs-header">
+            <span class="logs-title">
+              {{
+                podPickerDialog.mode === 'restart'
+                  ? t('clusterstacks.capiProviders.logs.restartProvider')
+                  : t('clusterstacks.capiProviders.logs.title')
+              }}
+              <span v-if="podPickerDialog.provider" class="logs-namespace">
+                ({{ podPickerDialog.provider.namespace }})
+              </span>
+            </span>
+            <button class="btn-close" @click="closePodPicker">
+              &times;
+            </button>
+          </div>
+          <div class="logs-body">
+            <div v-if="podPickerDialog.loading" class="no-data">
+              {{ t('clusterstacks.common.loading') }}
+            </div>
+            <div v-else-if="!podPickerDialog.pods.length" class="no-data">
+              {{ t('clusterstacks.capiProviders.logs.noPods') }}
+            </div>
+            <table v-else class="pods-table">
+              <thead>
+                <tr>
+                  <th>{{ t('clusterstacks.cso.pods.name') }}</th>
+                  <th>{{ t('clusterstacks.cso.pods.status') }}</th>
+                  <th>{{ t('clusterstacks.cso.pods.ready') }}</th>
+                  <th>{{ t('clusterstacks.cso.pods.restarts') }}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="pod in podPickerDialog.pods" :key="pod.metadata.uid">
+                  <td class="pod-name">{{ pod.metadata.name }}</td>
+                  <td>
+                    <span class="phase-badge" :class="phaseClass(pod)">
+                      {{ pod.status.phase || t('clusterstacks.cso.unknown') }}
+                    </span>
+                  </td>
+                  <td>{{ podReady(pod) }}</td>
+                  <td>{{ podRestarts(pod) }}</td>
+                  <td>
+                    <button
+                      v-if="podPickerDialog.mode === 'logs'"
+                      class="btn btn-sm role-secondary"
+                      @click="openPodLogs(pod)"
+                    >
+                      {{ t('clusterstacks.cso.pods.viewLogs') }}
+                    </button>
+                    <button
+                      v-else
+                      class="btn btn-sm btn-restart-pod"
+                      @click="restartPod(pod)"
+                    >
+                      {{ t('clusterstacks.capiProviders.logs.restartPod') }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </div>
+</template>
+
+<script>
+import { ROUTES } from '../../config/clusterstacks';
+import ConfirmDeleteDialog from '../../components/ConfirmDeleteDialog.vue';
+import Banner from '@components/Banner/Banner.vue';
+import { FLEET_MANAGED_TOOLTIP, isFleetManagedResource } from '../../utils/fleet-management';
+
+export default {
+  name: 'CapiProvidersList',
+
+  components: { Banner, ConfirmDeleteDialog },
+
+  data() {
+    return {
+      loading:          true,
+      hasAdminAccess:   null,
+      providers:        [],
+      showDeleteDialog: false,
+      pendingDelete:    null,
+      podPickerDialog:  {
+        show:     false,
+        mode:     'logs',
+        provider: null,
+        pods:     [],
+        loading:  false,
+      },
+    };
+  },
+
+  async mounted() {
+    const isAdmin = this.isAdminUser();
+
+    this.hasAdminAccess = isAdmin;
+
+    if (!isAdmin) {
+      this.loading = false;
+      return;
+    }
+
+    await this.loadProviders();
+    // Poll every 10 s so provider status updates automatically
+    this._pollTimer = setInterval(() => this.loadProviders(), 10000);
+  },
+
+  beforeDestroy() {
+    clearInterval(this._pollTimer);
+  },
+
+  computed: {
+    fleetManagedTooltip() {
+      return FLEET_MANAGED_TOOLTIP;
+    },
+  },
+
+  methods: {
+    isAdminUser() {
+      const schema = this.$store.getters['management/schemaFor']('management.cattle.io.setting');
+      return !!(schema?.resourceMethods || []).includes('PUT');
+    },
+
+    async loadProviders() {
+      // Only show full loading spinner on the initial load, not on poll refreshes
+      const isInitial = !this.providers.length;
+
+      if (isInitial) {
+        this.loading = true;
+      }
+
+      try {
+        const response = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    '/apis/turtles-capi.cattle.io/v1alpha1/capiproviders',
+        });
+
+        this.providers = (response?.items || []).map((item) => {
+          const conditions = item.status?.conditions || [];
+          const readyCond  = conditions.find((c) => c.type === 'Ready');
+
+          return {
+            uid:       item.metadata?.uid || `${ item.metadata?.namespace }/${ item.metadata?.name }`,
+            name:      item.metadata?.name || item.spec?.name || '',
+            namespace: item.metadata?.namespace || '',
+            type:      item.spec?.type || '',
+            version:   item.spec?.version || '',
+            ready:     readyCond?.status === 'True',
+            fleetManaged: isFleetManagedResource(item),
+            raw:       item,
+          };
+        });
+      } catch {
+        this.providers = [];
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    createProvider() {
+      this.$router.push({ name: ROUTES.CAPI_PROVIDERS_CREATE });
+    },
+
+    editProvider(provider) {
+      if (provider?.fleetManaged) {
+        return;
+      }
+
+      this.$router.push({
+        name:  ROUTES.CAPI_PROVIDERS_CREATE,
+        query: { namespace: provider.namespace, name: provider.name },
+      });
+    },
+
+    async openPodPicker(provider, mode) {
+
+      this.podPickerDialog = {
+        show:    true,
+        mode,
+        provider,
+        pods:    [],
+        loading: true,
+      };
+
+      try {
+        const response = await this.$store.dispatch('management/request', {
+          method: 'GET',
+          url:    `/api/v1/namespaces/${ provider.namespace }/pods`,
+        });
+
+        this.podPickerDialog.pods    = response?.items || [];
+        this.podPickerDialog.loading = false;
+      } catch {
+        this.podPickerDialog.pods    = [];
+        this.podPickerDialog.loading = false;
+      }
+    },
+
+    closePodPicker() {
+      this.podPickerDialog.show = false;
+    },
+
+    openPodLogs(pod) {
+      const ns            = pod.metadata.namespace;
+      const name          = pod.metadata.name;
+      const containerName = pod.spec?.containers?.[0]?.name;
+
+      const podProxy = {
+        ...pod,
+        id:                   `${ ns }/${ name }`,
+        nameDisplay:          name,
+        defaultContainerName: containerName,
+        links:                { view: `/k8s/clusters/local/api/v1/namespaces/${ ns }/pods/${ name }` },
+      };
+
+      this.$store.dispatch('wm/open', {
+        id:        `${ ns }/${ name }-logs`,
+        label:     name,
+        icon:      'file',
+        component: 'ContainerLogs',
+        attrs:     {
+          pod:              podProxy,
+          initialContainer: containerName,
+        },
+      });
+
+      // Close the pod picker dialog after opening logs
+      this.closePodPicker();
+    },
+
+    async restartPod(pod) {
+      const ns   = pod.metadata.namespace;
+      const name = pod.metadata.name;
+
+      try {
+        // Deleting the pod causes Kubernetes to automatically recreate it via the parent controller (Deployment/ReplicaSet)
+        await this.$store.dispatch('management/request', {
+          method: 'DELETE',
+          url:    `/api/v1/namespaces/${ ns }/pods/${ name }`,
+        });
+      } catch (e) {
+        console.error(e); // eslint-disable-line no-console
+      }
+
+      this.closePodPicker();
+    },
+
+    phaseClass(pod) {
+      const phase = pod.status?.phase || '';
+
+      return {
+        'phase-running':   phase === 'Running',
+        'phase-pending':   phase === 'Pending',
+        'phase-succeeded': phase === 'Succeeded',
+        'phase-failed':    phase === 'Failed',
+        'phase-unknown':   !phase || phase === 'Unknown',
+      };
+    },
+
+    podReady(pod) {
+      const containers = pod.status?.containerStatuses || [];
+
+      if (!containers.length) {
+        return this.t('clusterstacks.common.na');
+      }
+      const ready = containers.filter((c) => c.ready).length;
+
+      return `${ ready }/${ containers.length }`;
+    },
+
+    podRestarts(pod) {
+      return (pod.status?.containerStatuses || []).reduce((sum, c) => sum + (c.restartCount || 0), 0);
+    },
+
+    requestDelete(provider) {
+      if (provider?.fleetManaged) {
+        return;
+      }
+
+      this.pendingDelete    = provider;
+      this.showDeleteDialog = true;
+    },
+
+    cancelDelete() {
+      this.showDeleteDialog = false;
+      this.pendingDelete    = null;
+    },
+
+    async confirmDelete() {
+      const provider = this.pendingDelete;
+
+      this.showDeleteDialog = false;
+      this.pendingDelete    = null;
+
+      if (!provider) {
+        return;
+      }
+
+      try {
+        await this.$store.dispatch('management/request', {
+          method: 'DELETE',
+          url:    `/apis/turtles-capi.cattle.io/v1alpha1/namespaces/${ provider.namespace }/capiproviders/${ provider.name }`,
+        });
+
+        // Optimistically remove the provider from the list immediately so the
+        // UI reflects the deletion without waiting for a full reload.
+        this.providers = this.providers.filter((p) => p.uid !== provider.uid);
+
+        // Also delete the namespace that was created for this provider.
+        try {
+          await this.$store.dispatch('management/request', {
+            method: 'DELETE',
+            url:    `/api/v1/namespaces/${ provider.namespace }`,
+          });
+        } catch (e) {
+          console.warn('Could not delete provider namespace:', e); // eslint-disable-line no-console
+        }
+      } catch (e) {
+        console.error(e); // eslint-disable-line no-console
+      }
+    },
+
+    t(key) {
+      return this.$store.getters['i18n/t'](key);
+    },
+  },
+};
+</script>
+
+<style lang="scss" scoped>
+.capi-providers-page {
+  padding: 20px;
+}
+
+header {
+  margin-bottom: 20px;
+}
+
+header.with-subheader {
+  grid-template-areas:
+    'type-banner type-banner'
+    'title actions'
+    'sub-header sub-header'
+    'state-banner state-banner';
+}
+
+.title {
+  align-items: center;
+  display: flex;
+}
+
+.sub-header {
+  grid-area: sub-header;
+}
+
+// Banner component handles permission warning - no custom banner CSS needed
+
+
+.no-data {
+  padding: 40px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.provider-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+
+  th {
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 700;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    border-bottom: 2px solid var(--border);
+  }
+
+  td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--body-text);
+    vertical-align: middle;
+  }
+
+  tbody tr:hover {
+    background: var(--hover-bg, rgba(0, 0, 0, 0.03));
+  }
+}
+
+.cell-name {
+  font-weight: 600;
+}
+
+.cell-mono {
+  font-family: monospace;
+  font-size: 0.85em;
+}
+
+.cell-actions {
+  text-align: right;
+  white-space: nowrap;
+  min-width: 300px;
+}
+
+// fleet-banner-row / fleet-banner-inline removed – badge used instead
+
+.action-buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.fleet-managed-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f59e0b;
+  color: #1c1100;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: 600;
+  background: var(--accent-btn, rgba(0, 0, 0, 0.08));
+  color: var(--body-text);
+
+  &.type-infrastructure  { background: #dbeafe; color: #1e40af; }
+  &.type-controlplane    { background: #d1fae5; color: #065f46; }
+  &.type-bootstrap       { background: #fef3c7; color: #92400e; }
+  &.type-core            { background: #ede9fe; color: #5b21b6; }
+  &.type-addon           { background: #fce7f3; color: #9d174d; }
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: 600;
+
+  &.status-ready   { background: #d1fae5; color: #065f46; }
+  &.status-pending { background: #fef3c7; color: #92400e; }
+}
+
+.btn-logs {
+  background-color: var(--info, #2563eb);
+  border-color: var(--info, #2563eb);
+  color: #fff;
+  margin-right: 6px;
+
+  &:not(:disabled):hover {
+    opacity: 0.85;
+  }
+}
+
+.btn-restart {
+  background-color: var(--warning, #d97706);
+  border-color: var(--warning, #d97706);
+  color: #fff;
+  margin-right: 6px;
+
+  &:not(:disabled):hover {
+    opacity: 0.85;
+  }
+}
+
+.btn-restart-pod {
+  background-color: var(--warning, #d97706);
+  border-color: var(--warning, #d97706);
+  color: #fff;
+
+  &:not(:disabled):hover {
+    opacity: 0.85;
+  }
+}
+
+.btn-edit {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  margin-right: 6px;
+
+  &:not(:disabled):hover {
+    opacity: 0.85;
+  }
+}
+
+.btn-delete {
+  background-color: var(--error, #b91c1c);
+  border-color: var(--error, #b91c1c);
+  color: #fff;
+
+  &:not(:disabled):hover {
+    background-color: var(--error-hover, #991b1b);
+    border-color: var(--error-hover, #991b1b);
+  }
+}
+
+/* ─── Logs dialog ──────────────────────────────────────────────── */
+.logs-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.logs-dialog {
+  background: var(--box-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  width: 700px;
+  max-width: 95vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.logs-title {
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--body-text);
+}
+
+.logs-namespace {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.85em;
+  margin-left: 4px;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 1.4em;
+  cursor: pointer;
+  color: var(--muted);
+  line-height: 1;
+  padding: 0 4px;
+
+  &:hover { color: var(--body-text); }
+}
+
+.logs-body {
+  overflow-y: auto;
+  padding: 16px;
+  flex: 1;
+}
+
+.pods-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    font-weight: 700;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    border-bottom: 2px solid var(--border);
+  }
+
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+}
+
+.pod-name {
+  font-weight: 600;
+  font-family: monospace;
+  font-size: 0.85em;
+}
+
+.phase-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: 600;
+
+  &.phase-running   { background: #d1fae5; color: #065f46; }
+  &.phase-pending   { background: #fef3c7; color: #92400e; }
+  &.phase-succeeded { background: rgba(56, 139, 253, 0.15); color: var(--info, #388bfd); }
+  &.phase-failed    { background: rgba(185, 28, 28, 0.15); color: var(--error, #b91c1c); }
+  &.phase-unknown   { background: rgba(128, 128, 128, 0.15); color: var(--muted); }
+}
+
+.dialog-fade-enter-active,
+.dialog-fade-leave-active { transition: opacity 0.15s ease; }
+.dialog-fade-enter-from,
+.dialog-fade-leave-to     { opacity: 0; }
+</style>

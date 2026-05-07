@@ -1,0 +1,875 @@
+/**
+ * OpenStack API Service for ClusterStacks UI Extension.
+ *
+ * Accepts a raw clouds.yaml string, parses it internally, and provides
+ * authenticated access to:
+ *   - Keystone (identity)
+ *   - Nova (compute, quota)
+ *   - Neutron (network)
+ *   - Cinder (volumes)
+ *   - Glance (images)
+ *   - Swift (object storage for etcd backup)
+ */
+
+import {
+  OpenStackFlavor,
+  OpenStackImage,
+  OpenStackServer,
+  OpenStackNetwork,
+  OpenStackSubnet,
+  OpenStackSecurityGroup,
+  OpenStackFloatingIP,
+  OpenStackRouter,
+  OpenStackVolume,
+  OpenStackQuota,
+  NetworkQuota,
+  VolumeQuota,
+  SwiftContainer,
+  OpenStackProject,
+  OpenStackRegion,
+  OpenStackKeyPair,
+  CatalogEntry,
+  Endpoint,
+} from '../types/openstack';
+
+const PROXY_BASE = '/meta/proxy';
+
+// ─── Internal parsed representation of a clouds.yaml entry ─────────────────
+
+interface ParsedCloud {
+  authUrl: string;
+  regionName: string;
+  // user/password auth
+  username?: string;
+  password?: string;
+  projectName?: string;
+  projectId?: string;
+  domainName?: string;
+  // application-credential auth
+  applicationCredentialId?: string;
+  applicationCredentialSecret?: string;
+}
+
+/**
+ * Minimal clouds.yaml parser.
+ *
+ * Scans every line for `key: value` pairs regardless of indentation level.
+ * This covers all standard clouds.yaml keys without requiring a full YAML parser.
+ * Quoted values and inline comments are handled.
+ *
+ * The following keys are extracted (first occurrence wins):
+ *   auth_url, username, password, project_name, project_id,
+ *   user_domain_name / domain_name, region_name,
+ *   application_credential_id, application_credential_secret
+ */
+export function parseCloudsYaml(text: string): ParsedCloud {
+  const seen: Record<string, string> = {};
+
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, colonIdx).trim();
+    let val = line.slice(colonIdx + 1).trim();
+
+    // Skip lines whose value is empty (they are parent / mapping keys)
+    if (!val) {
+      continue;
+    }
+
+    // Remove trailing inline comments
+    val = val.replace(/\s+#.*$/, '');
+
+    // Strip surrounding single or double quotes
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+
+    if (val && !(key in seen)) {
+      seen[key] = val;
+    }
+  }
+
+  const authUrl = (seen['auth_url'] || '').replace(/\/+$/, '');
+  if (!authUrl) {
+    throw new Error('auth_url not found in clouds.yaml');
+  }
+
+  return {
+    authUrl,
+    regionName:                   seen['region_name'] || '',
+    username:                     seen['username'],
+    password:                     seen['password'],
+    projectName:                  seen['project_name'],
+    projectId:                    seen['project_id'],
+    domainName:                   seen['user_domain_name'] || seen['domain_name'] || 'Default',
+    applicationCredentialId:      seen['application_credential_id'],
+    applicationCredentialSecret:  seen['application_credential_secret'],
+  };
+}
+
+/**
+ * Normalise a Keystone auth URL so that it always ends in `/v3`.
+ *
+ * Handles inputs like:
+ *   https://identity.example.com:5000
+ *   https://identity.example.com:5000/
+ *   https://identity.example.com:5000/v3
+ *   https://identity.example.com:5000/v3/
+ */
+function normaliseAuthUrl(raw: string): string {
+  return raw.replace(/\/+$/, '').replace(/\/v\d+$/, '') + '/v3';
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
+export class OpenStackApiService {
+  private cloud: ParsedCloud;
+  private store: any;
+  private token: string | null = null;
+  private catalog: CatalogEntry[] = [];
+  private currentProjectId: string | null = null;
+  private currentUserId: string | null = null;
+
+  /**
+   * @param cloudsYaml  Raw text content of a clouds.yaml file, or a pre-parsed credential object.
+   * @param store       Rancher Vuex store (used for proxied HTTP requests).
+   */
+  constructor(cloudsYaml: string | ParsedCloud, store: any) {
+    this.cloud = typeof cloudsYaml === 'string' ? parseCloudsYaml(cloudsYaml) : cloudsYaml as ParsedCloud;
+    this.store = store;
+  }
+
+  /** The project name extracted from clouds.yaml (populated after getToken()). */
+  getProjectName(): string {
+    return this.cloud.projectName || '';
+  }
+
+  // ─── Authentication ───────────────────────────────────────────────────────
+
+  async getToken(): Promise<string> {
+    if (this.token) {
+      return this.token;
+    }
+
+    const authBody = this.buildAuthBody();
+    const keystoneBase = normaliseAuthUrl(this.cloud.authUrl);
+    const url = `${PROXY_BASE}/${keystoneBase.replace(/^https?:\/\//, '')}/auth/tokens`;
+
+    const response = await this.store.dispatch('management/request', {
+      method:               'POST',
+      url,
+      headers:              { 'Content-Type': 'application/json' },
+      data:                 JSON.stringify(authBody),
+      redirectUnauthorized: false,
+    });
+
+    this.token = response.headers?.['x-subject-token'] || response._headers?.['x-subject-token'];
+    if (response.token?.catalog) {
+      this.catalog = response.token.catalog;
+    }
+    if (response.token?.project?.id) {
+      this.currentProjectId = response.token.project.id;
+    }
+    if (response.token?.user?.id) {
+      this.currentUserId = response.token.user.id;
+    }
+    // Prefer the project name returned by Keystone over the parsed one
+    if (response.token?.project?.name) {
+      this.cloud.projectName = response.token.project.name;
+    }
+
+    if (!this.token) {
+      throw new Error('Keystone did not return a token (x-subject-token header missing)');
+    }
+
+    return this.token;
+  }
+
+  private buildAuthBody(): object {
+    const { applicationCredentialId, applicationCredentialSecret } = this.cloud;
+
+    if (applicationCredentialId) {
+      return {
+        auth: {
+          identity: {
+            methods:                ['application_credential'],
+            application_credential: {
+              id:     applicationCredentialId,
+              secret: applicationCredentialSecret || '',
+            },
+          },
+        },
+      };
+    }
+
+    const { username, password, projectName, projectId, domainName } = this.cloud;
+    const domain = { name: domainName || 'Default' };
+
+    return {
+      auth: {
+        identity: {
+          methods:  ['password'],
+          password: {
+            user: {
+              name:     username || '',
+              password: password || '',
+              domain,
+            },
+          },
+        },
+        scope: {
+          project: projectId
+            ? { id: projectId }
+            : { name: projectName || '', domain },
+        },
+      },
+    };
+  }
+
+  // ─── Endpoint Resolution ─────────────────────────────────────────────────
+
+  private getEndpointUrl(type: string, iface: 'public' | 'internal' = 'public'): string | null {
+    const entry = this.catalog.find((e) => e.type === type);
+    if (!entry) {
+      return null;
+    }
+
+    const region = this.cloud.regionName;
+    let endpoint: Endpoint | undefined;
+
+    if (region) {
+      endpoint = entry.endpoints.find(
+        (e) => e.interface === iface && (e.region === region || e.region_id === region),
+      );
+    }
+    if (!endpoint) {
+      endpoint = entry.endpoints.find((e) => e.interface === iface);
+    }
+
+    return endpoint?.url || null;
+  }
+
+  private async makeRequest(endpointType: string, path: string, method = 'GET', data?: any): Promise<any> {
+    await this.getToken();
+    const baseUrl = this.getEndpointUrl(endpointType);
+    if (!baseUrl) {
+      throw new Error(`No endpoint found for service type: ${endpointType}`);
+    }
+
+    const proxyUrl = `${PROXY_BASE}/${baseUrl.replace(/^https?:\/\//, '')}${path}`;
+
+    return await this.store.dispatch('management/request', {
+      method,
+      url:                  proxyUrl,
+      headers:              {
+        'X-Auth-Token': this.token,
+        'Content-Type': 'application/json',
+      },
+      data:                 data ? JSON.stringify(data) : undefined,
+      redirectUnauthorized: false,
+    });
+  }
+
+  private async swiftBulkDelete(paths: string[]): Promise<boolean> {
+    const cleaned = paths
+      .map((path) => String(path || '').trim().replace(/^\/+/, ''))
+      .filter(Boolean);
+
+    if (!cleaned.length) {
+      return true;
+    }
+
+    await this.getToken();
+    const baseUrl = this.getEndpointUrl('object-store');
+
+    if (!baseUrl) {
+      throw new Error('No endpoint found for service type: object-store');
+    }
+
+    const encodedPaths = cleaned.map((path) => encodeURI(`/${ path }`));
+    const proxyUrl = `${ PROXY_BASE }/${ baseUrl.replace(/^https?:\/\//, '') }?bulk-delete`;
+
+    try {
+      const response = await this.store.dispatch('management/request', {
+        method: 'POST',
+        url:    proxyUrl,
+        headers: {
+          'X-Auth-Token': this.token,
+          'Content-Type': 'text/plain',
+          Accept:         'application/json',
+        },
+        data:                 encodedPaths.join('\n'),
+        redirectUnauthorized: false,
+      });
+
+      let body: any = response;
+
+      if (typeof response === 'string') {
+        try {
+          body = JSON.parse(response);
+        } catch {
+          return false;
+        }
+      }
+
+      const errors = Array.isArray(body?.Errors) ? body.Errors : [];
+
+      // A response body with no failing sub-operations means success.
+      return !errors.length;
+    } catch (e) {
+      // If bulk-delete middleware is not enabled, caller falls back to single deletes.
+      if (
+        this.isHttpStatus(e, 400)
+        || this.isHttpStatus(e, 404)
+        || this.isHttpStatus(e, 405)
+        || this.isHttpStatus(e, 501)
+      ) {
+        return false;
+      }
+
+      throw e;
+    }
+  }
+
+  private async deleteObjectsIndividually(containerName: string, objectNames: string[]): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer || !objectNames.length) {
+      return;
+    }
+
+    const encodedContainer = encodeURIComponent(cleanContainer);
+
+    for (const objName of objectNames) {
+      const encodedObjectPath = objName
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+
+      try {
+        await this.makeRequest('object-store', `/${ encodedContainer }/${ encodedObjectPath }`, 'DELETE');
+      } catch (e) {
+        // Object may already be gone (eventual consistency / parallel delete).
+        if (!this.isHttpStatus(e, 404)) {
+          throw e;
+        }
+      }
+    }
+  }
+
+  private async deleteObjectsInBatches(containerName: string, objectNames: string[]): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer || !objectNames.length) {
+      return;
+    }
+
+    const chunkSize = 10000;
+
+    for (let i = 0; i < objectNames.length; i += chunkSize) {
+      const chunk = objectNames.slice(i, i + chunkSize);
+      const bulkPaths = chunk.map((objName) => `${ cleanContainer }/${ objName }`);
+      const deletedByBulk = await this.swiftBulkDelete(bulkPaths);
+
+      if (!deletedByBulk) {
+        await this.deleteObjectsIndividually(cleanContainer, chunk);
+      }
+    }
+  }
+
+  private isHttpStatus(error: any, statusCode: number): boolean {
+    const status = Number(
+      error?.status
+      ?? error?.response?.status
+      ?? error?.data?.status
+      ?? error?._status
+      ?? 0,
+    );
+
+    return status === statusCode;
+  }
+
+  private async listContainerObjects(containerName: string): Promise<string[]> {
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer) {
+      return [];
+    }
+
+    const encodedContainer = encodeURIComponent(cleanContainer);
+    const objectNames: string[] = [];
+    let marker = '';
+
+    while (true) {
+      const markerParam = marker ? `&marker=${ encodeURIComponent(marker) }` : '';
+      const response = await this.makeRequest(
+        'object-store',
+        `/${ encodedContainer }?format=json&limit=1000${ markerParam }`,
+      );
+
+      if (!Array.isArray(response) || !response.length) {
+        break;
+      }
+
+      for (const item of response) {
+        const name = String(item?.name || '').replace(/^\/+/, '');
+
+        if (name) {
+          objectNames.push(name);
+          marker = name;
+        }
+      }
+
+      if (response.length < 1000) {
+        break;
+      }
+    }
+
+    return objectNames;
+  }
+
+  private async purgeContainer(containerName: string): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer) {
+      return;
+    }
+
+    const objectNames = await this.listContainerObjects(cleanContainer);
+
+    if (!objectNames.length) {
+      return;
+    }
+
+    await this.deleteObjectsInBatches(cleanContainer, objectNames);
+
+  }
+
+  // ─── Nova (Compute) ───────────────────────────────────────────────────────
+
+  async getFlavors(): Promise<OpenStackFlavor[]> {
+    const response = await this.makeRequest('compute', '/flavors/detail');
+    return response.flavors || [];
+  }
+
+  async getImages(): Promise<OpenStackImage[]> {
+    const response = await this.makeRequest('image', '/v2/images?limit=1000');
+    return response.images || [];
+  }
+
+  async getServers(): Promise<OpenStackServer[]> {
+    const response = await this.makeRequest('compute', '/servers/detail');
+    return response.servers || [];
+  }
+
+  async getKeyPairs(): Promise<OpenStackKeyPair[]> {
+    const response = await this.makeRequest('compute', '/os-keypairs');
+    return (response.keypairs || []).map((kp: any) => kp.keypair);
+  }
+
+  async createKeyPair(name: string, publicKey: string): Promise<OpenStackKeyPair> {
+    const response = await this.makeRequest('compute', '/os-keypairs', 'POST', {
+      keypair: {
+        name,
+        public_key: publicKey,
+      },
+    });
+
+    return response.keypair;
+  }
+
+  async getAvailabilityZones(): Promise<string[]> {
+    const response = await this.makeRequest('compute', '/os-availability-zone');
+    return (response.availabilityZoneInfo || [])
+      .filter((az: any) => az.zoneState?.available)
+      .map((az: any) => az.zoneName as string);
+  }
+
+  // ─── Nova Quota ───────────────────────────────────────────────────────────
+
+  async getComputeQuota(projectId?: string): Promise<OpenStackQuota> {
+    await this.getToken();
+    const pid = projectId || this.currentProjectId;
+    if (!pid) {
+      throw new Error('No project ID available for quota query');
+    }
+    const response = await this.makeRequest('compute', `/os-quota-sets/${pid}/detail`);
+    return response.quota_set as OpenStackQuota;
+  }
+
+  // ─── Neutron (Network) ────────────────────────────────────────────────────
+
+  async getNetworks(): Promise<OpenStackNetwork[]> {
+    const response = await this.makeRequest('network', '/v2.0/networks');
+    return response.networks || [];
+  }
+
+  async getExternalNetworks(): Promise<OpenStackNetwork[]> {
+    const response = await this.makeRequest('network', '/v2.0/networks?router%3Aexternal=true');
+    return response.networks || [];
+  }
+
+  async getSubnets(networkId?: string): Promise<OpenStackSubnet[]> {
+    const filter = networkId ? `?network_id=${networkId}` : '';
+    const response = await this.makeRequest('network', `/v2.0/subnets${filter}`);
+    return response.subnets || [];
+  }
+
+  async getSecurityGroups(): Promise<OpenStackSecurityGroup[]> {
+    const response = await this.makeRequest('network', '/v2.0/security-groups');
+    return response.security_groups || [];
+  }
+
+  async getFloatingIPs(): Promise<OpenStackFloatingIP[]> {
+    const response = await this.makeRequest('network', '/v2.0/floatingips');
+    return response.floatingips || [];
+  }
+
+  async getRouters(): Promise<OpenStackRouter[]> {
+    const response = await this.makeRequest('network', '/v2.0/routers');
+    return response.routers || [];
+  }
+
+  async getNetworkQuota(projectId?: string): Promise<NetworkQuota> {
+    await this.getToken();
+    const pid = projectId || this.currentProjectId;
+    if (!pid) {
+      throw new Error('No project ID available for network quota query');
+    }
+    const response = await this.makeRequest('network', `/v2.0/quotas/${pid}/details`);
+    // Neutron's /details endpoint uses 'used' instead of 'in_use'; normalize to match QuotaItem
+    const quota = response.quota as Record<string, any>;
+    for (const key of Object.keys(quota)) {
+      if (quota[key] && typeof quota[key] === 'object' && 'used' in quota[key] && !('in_use' in quota[key])) {
+        quota[key].in_use = quota[key].used;
+      }
+    }
+    return quota as NetworkQuota;
+  }
+
+  // ─── Cinder (Block Storage) ───────────────────────────────────────────────
+
+  async getVolumes(): Promise<OpenStackVolume[]> {
+    const response = await this.makeRequest('volumev3', '/volumes/detail');
+    return response.volumes || [];
+  }
+
+  async getVolumeQuota(projectId?: string): Promise<VolumeQuota> {
+    await this.getToken();
+    const pid = projectId || this.currentProjectId;
+    if (!pid) {
+      throw new Error('No project ID available for volume quota query');
+    }
+    const response = await this.makeRequest('volumev3', `/os-quota-sets/${pid}?usage=true`);
+    return response.quota_set as VolumeQuota;
+  }
+
+  // ─── Glance (Image) ───────────────────────────────────────────────────────
+
+  async getGlanceImages(filters?: Record<string, string>): Promise<OpenStackImage[]> {
+    let query = '?limit=1000';
+    if (filters) {
+      for (const [key, value] of Object.entries(filters)) {
+        query += `&${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+      }
+    }
+    const response = await this.makeRequest('image', `/v2/images${query}`);
+    return response.images || [];
+  }
+
+  // ─── Swift (Object Storage) ───────────────────────────────────────────────
+
+  async listContainers(): Promise<SwiftContainer[]> {
+    const response = await this.makeRequest('object-store', '?format=json');
+    return Array.isArray(response) ? response : [];
+  }
+
+  async createContainer(containerName: string): Promise<void> {
+    await this.makeRequest('object-store', `/${containerName}`, 'PUT');
+  }
+
+  async listContainerFolders(containerName: string): Promise<string[]> {
+    const stats = await this.listContainerFolderStats(containerName);
+
+    return stats.map((entry) => entry.path);
+  }
+
+  async listContainerFolderStats(containerName: string): Promise<Array<{ path: string; fileCount: number }>> {
+    if (!containerName) {
+      return [];
+    }
+
+    const encodedContainer = encodeURIComponent(containerName);
+    const markerName = '._rancher_folder_marker';
+    const folderSet = new Set<string>();
+    const fileCounts: Record<string, number> = {};
+    let marker = '';
+
+    while (true) {
+      const markerParam = marker ? `&marker=${ encodeURIComponent(marker) }` : '';
+      const response = await this.makeRequest(
+        'object-store',
+        `/${ encodedContainer }?format=json&limit=1000${ markerParam }`,
+      );
+
+      if (!Array.isArray(response) || !response.length) {
+        break;
+      }
+
+      for (const item of response) {
+        const rawName = String(item?.name || '').replace(/^\/+|\/+$/g, '');
+
+        if (!rawName) {
+          continue;
+        }
+
+        const isFolderMarker = rawName.endsWith(`/${ markerName }`) || rawName === markerName;
+        const parts = rawName.split('/').filter(Boolean);
+
+        if (parts.length > 1) {
+          for (let i = 1; i < parts.length; i++) {
+            folderSet.add(parts.slice(0, i).join('/'));
+          }
+        }
+
+        if (!isFolderMarker && !rawName.endsWith('/')) {
+          for (let i = 1; i < parts.length; i++) {
+            const folderPath = parts.slice(0, i).join('/');
+
+            fileCounts[folderPath] = (fileCounts[folderPath] || 0) + 1;
+          }
+        }
+
+        marker = rawName;
+      }
+
+      if (response.length < 1000) {
+        break;
+      }
+    }
+
+    return Array.from(folderSet)
+      .sort()
+      .map((path) => ({ path, fileCount: fileCounts[path] || 0 }));
+  }
+
+  async createFolder(containerName: string, folderPath: string): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+    const cleanFolder = (folderPath || '').trim().replace(/^\/+|\/+$/g, '');
+
+    if (!cleanContainer || !cleanFolder) {
+      return;
+    }
+
+    // Swift has pseudo-folders only; create a marker object inside the prefix.
+    const encodedPath = `${ cleanFolder
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/') }/${ encodeURIComponent('._rancher_folder_marker') }`;
+
+    await this.getToken();
+
+    const baseUrl = this.getEndpointUrl('object-store');
+
+    if (!baseUrl) {
+      throw new Error('No endpoint found for service type: object-store');
+    }
+
+    const proxyUrl = `${PROXY_BASE}/${baseUrl.replace(/^https?:\/\//, '')}/${encodeURIComponent(cleanContainer)}/${encodedPath}`;
+
+    await this.store.dispatch('management/request', {
+      method: 'PUT',
+      url:    proxyUrl,
+      headers: {
+        'X-Auth-Token': this.token,
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': '0',
+      },
+      data:                 '',
+      redirectUnauthorized: false,
+    });
+  }
+
+  async deleteFolder(containerName: string, folderPath: string): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+    const cleanFolder = (folderPath || '').trim().replace(/^\/+|\/+$/g, '');
+
+    if (!cleanContainer || !cleanFolder) {
+      return;
+    }
+
+    const encodedContainer = encodeURIComponent(cleanContainer);
+    const prefix = `${ cleanFolder }/`;
+    let marker = '';
+    const objectNames: string[] = [];
+
+    while (true) {
+      const markerParam = marker ? `&marker=${ encodeURIComponent(marker) }` : '';
+      const response = await this.makeRequest(
+        'object-store',
+        `/${ encodedContainer }?format=json&limit=1000&prefix=${ encodeURIComponent(prefix) }${ markerParam }`,
+      );
+
+      if (!Array.isArray(response) || !response.length) {
+        break;
+      }
+
+      for (const item of response) {
+        const name = String(item?.name || '').replace(/^\/+/, '');
+
+        if (name) {
+          objectNames.push(name);
+          marker = name;
+        }
+      }
+
+      if (response.length < 1000) {
+        break;
+      }
+    }
+
+    await this.deleteObjectsInBatches(cleanContainer, objectNames);
+  }
+
+  async deleteContainer(containerName: string): Promise<void> {
+    const cleanContainer = (containerName || '').trim();
+
+    if (!cleanContainer) {
+      return;
+    }
+
+    try {
+      await this.makeRequest('object-store', `/${ encodeURIComponent(cleanContainer) }`, 'DELETE');
+    } catch (e) {
+      if (this.isHttpStatus(e, 404)) {
+        return;
+      }
+
+      // Swift returns 409 Conflict for non-empty containers.
+      if (!this.isHttpStatus(e, 409)) {
+        throw e;
+      }
+
+      await this.purgeContainer(cleanContainer);
+
+      try {
+        await this.makeRequest('object-store', `/${ encodeURIComponent(cleanContainer) }`, 'DELETE');
+      } catch (finalDeleteError) {
+        // If another process already removed the container, treat as success.
+        if (!this.isHttpStatus(finalDeleteError, 404)) {
+          throw finalDeleteError;
+        }
+      }
+    }
+  }
+
+  async getSwiftEndpoint(): Promise<string | null> {
+    await this.getToken();
+    return this.getEndpointUrl('object-store');
+  }
+
+  // ─── Keystone (Identity) ──────────────────────────────────────────────────
+
+  private keystoneUrl(path: string): string {
+    const base = normaliseAuthUrl(this.cloud.authUrl);
+    return `${PROXY_BASE}/${base.replace(/^https?:\/\//, '')}${path}`;
+  }
+
+  async getProjects(): Promise<OpenStackProject[]> {
+    const response = await this.store.dispatch('management/request', {
+      method:               'GET',
+      url:                  this.keystoneUrl('/auth/projects'),
+      headers:              { 'X-Auth-Token': await this.getToken() },
+      redirectUnauthorized: false,
+    });
+    return response.projects || [];
+  }
+
+  async getRegions(): Promise<OpenStackRegion[]> {
+    const response = await this.store.dispatch('management/request', {
+      method:               'GET',
+      url:                  this.keystoneUrl('/regions'),
+      headers:              { 'X-Auth-Token': await this.getToken() },
+      redirectUnauthorized: false,
+    });
+    return response.regions || [];
+  }
+
+  getCurrentProjectId(): string | null {
+    return this.currentProjectId;
+  }
+
+  getCurrentUserId(): string | null {
+    return this.currentUserId;
+  }
+
+  // ─── EC2 Credentials ────────────────────────────────────────────────────
+
+  async listEC2Credentials(): Promise<any[]> {
+    await this.getToken();
+    const url = this.keystoneUrl('/credentials?type=ec2');
+    const response = await this.store.dispatch('management/request', {
+      method:               'GET',
+      url,
+      headers:              { 'X-Auth-Token': this.token },
+      redirectUnauthorized: false,
+    });
+
+    const all = (response.credentials || []).map((c: any) => {
+      let parsedBlob: any = {};
+
+      try {
+        parsedBlob = JSON.parse(c.blob || '{}');
+      } catch { /* ignore */ }
+
+      return { ...c, parsedBlob };
+    });
+
+    // Filter to only EC2 credentials belonging to the current project
+    if (this.currentProjectId) {
+      return all.filter((c: any) => c.project_id === this.currentProjectId);
+    }
+
+    return all;
+  }
+
+  async createEC2Credential(): Promise<any> {
+    await this.getToken();
+    const url = this.keystoneUrl(`/users/${ this.currentUserId }/credentials/OS-EC2`);
+    const response = await this.store.dispatch('management/request', {
+      method:               'POST',
+      url,
+      headers:              {
+        'X-Auth-Token': this.token,
+        'Content-Type': 'application/json',
+      },
+      data:                 JSON.stringify({ tenant_id: this.currentProjectId }),
+      redirectUnauthorized: false,
+    });
+
+    return response.credential;
+  }
+
+  async deleteEC2Credential(credentialId: string): Promise<void> {
+    await this.getToken();
+    const url = this.keystoneUrl(`/credentials/${ credentialId }`);
+    await this.store.dispatch('management/request', {
+      method:               'DELETE',
+      url,
+      headers:              { 'X-Auth-Token': this.token },
+      redirectUnauthorized: false,
+    });
+  }
+}

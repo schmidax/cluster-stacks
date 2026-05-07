@@ -1,0 +1,745 @@
+clusterstacks:
+  provisioner:
+    label: ClusterStacks (OpenStack)
+    description: Kubernetes-Cluster mit ClusterStacks und OpenStack-Infrastruktur via CAPI erstellen.
+    credentialRequired: Bitte zuerst ein OpenStack-Projekt auswählen. Flavors, Netzwerke, Security Groups und Buckets werden live aus OpenStack geladen.
+    openstackProject: OpenStack-Projekt
+    connect: Verbinden
+    changeCredential: Wechseln
+    nodePools: Node Pools
+    controlPlaneTab: Control Plane
+    createKeyPair: SSH-Keypair anlegen
+    securityTitle: Sicherheit
+    selectedRules: Ausgewählte Security Group Rules
+    certSANsHint: Zusätzliche SANs sind optionale DNS-Namen/IPs für das API-Server-Zertifikat (kommagetrennt).
+
+  nav:
+    dashboard: Dashboard
+    clusters: Cluster
+    stacks: Stacks
+    csoManagement: Management
+    openstack: OpenStack
+    openstackResources: Ressourcen
+    openstackObjectstorage: Object Storage
+    capiProviders: CAPI Provider
+
+  dashboard:
+    title: ClusterStacks Dashboard
+    description: Rancher-native Übersicht für ClusterStacks-Abläufe über alle sichtbaren OpenStack-Projekte.
+    quickStart:
+      title: Quick Start
+      subtitleAdmin: "Schneller Einstieg für Admins: Projekte, Provider und Cluster zentral steuern."
+      subtitleTenant: "Schneller Einstieg für Mandanten: Projektzugang nutzen, Ressourcen prüfen und Cluster erstellen."
+      actions:
+        openstack:
+          title: OpenStack-Übersicht
+          description: Projekt- und Credential-Übersicht öffnen.
+        createCluster:
+          title: Cluster erstellen
+          description: Bereitstellung eines neuen Workload-Clusters starten.
+        management:
+          title: Management
+          description: CSO-Installation und RBAC-Helfer konfigurieren.
+        providers:
+          title: CAPI Provider
+          description: Installierte Provider-Controller prüfen und verwalten.
+        reviewResources:
+          title: Ressourcen prüfen
+          description: Quotas, Netzwerke und Object Storage pro Projekt prüfen.
+    overview:
+      title: Ressourcen-Übersicht
+      subtitle: Aktuelle Summen aus allen für dich sichtbaren Ressourcen.
+      metrics:
+        clusters: Cluster
+        stacks: ClusterStacks
+        projects: Projekte
+        credentials: Credentials
+        providers: CAPI Provider
+        provisioned: Bereitgestellt
+        other: sonstige
+    lists:
+      title: Cluster und Projekte
+      clusters: Letzte Cluster
+      credentials: Sichtbare Credentials
+      noClusters: Noch keine sichtbaren Cluster.
+      noCredentials: Noch keine sichtbaren Credentials.
+    links:
+      viewAllClusters: Alle Cluster anzeigen
+      viewAllCredentials: Alle Credentials anzeigen
+
+  clusters:
+    title: Cluster
+    createBtn: Cluster erstellen
+    noData: Keine Cluster gefunden.
+    deleteConfirm: "Cluster \"{name}\" löschen? Das kann nicht rückgängig gemacht werden."
+    table:
+      name: Name
+      namespace: Namespace
+      version: K8s-Version
+      phase: Phase
+      age: Alter
+      ready: Bereit
+      state: Status
+      provider: Provider
+      nodes: Nodes
+      controlPlane: Control Plane
+      workers: Worker
+      infraReady: Infra
+    actions:
+      viewDetail: Details anzeigen
+      downloadKubeconfig: Kubeconfig herunterladen
+      explore: Erkunden
+      exploreNotImported: Dieser Cluster ist nicht in Rancher importiert und kann nicht erkundet werden.
+      kubeconfigNotFound: Kubeconfig-Secret für diesen Cluster nicht gefunden.
+      kubeconfigError: Kubeconfig konnte nicht heruntergeladen werden. Das Secret existiert möglicherweise noch nicht.
+
+  clusterCreate:
+    title: Cluster erstellen
+    editTitle: Cluster bearbeiten
+    selectStack: Wähle einen ClusterStack für den neuen Cluster.
+    noStacks: Keine ClusterStacks gefunden. Erstelle zuerst einen ClusterStack.
+    changeStack: ClusterStack ändern
+    update: Cluster aktualisieren
+    tabs:
+      general: Allgemein
+      image: Image
+      networking: Netzwerk
+      controlPlane: Control Plane
+      workers: Worker-Pools
+      bastion: Bastion
+      security: Sicherheit
+      oidc: OIDC
+      etcd: ETCD-Backup
+    name: Clustername
+    namespace: Namespace
+    clusterClass: ClusterClass
+    k8sVersion: Kubernetes-Version
+    k8sVersionPlaceholder: Kubernetes-Version auswählen...
+    identity:
+      title: Identität / Anmeldedaten
+      secretName: Secret-Name
+      cloudName: Cloud-Name
+    image:
+      title: VM-Image
+      imageName: Image-Name
+      imageNamePlaceholder: Image-Name auswählen oder eingeben...
+      isOrc: ORC-Image verwenden
+      isOrcHint: Wenn aktiviert, verweist imageName auf eine ORC-Image-Ressource.
+      addVersion: K8s-Version anhängen
+      addVersionHint: "Hängt die Kubernetes-Version an den Image-Namen an (z.B. ubuntu-capi-image-v1.33.6+rke2r1)."
+    controlPlane:
+      title: Control Plane
+      compute: Compute-Einstellungen
+      replicas: Replikate
+      replicasHaHint: Für HA/Quorum sind nur ungerade Replikat-Zahlen erlaubt (1, 3, 5, ...).
+      flavor: VM-Flavor
+      flavorPlaceholder: Flavor auswählen...
+      rootDisk: Root-Disk (GiB)
+      serverGroupID: Server-Gruppen-ID
+      serverGroupIDPlaceholder: UUID (optional, für Anti-Affinität)
+      availabilityZones: Verfügbarkeitszonen
+      omitAZ: Verfügbarkeitszone weglassen
+      omitAZHint: Nova-Scheduler anhand anderer Einschränkungen die AZ bestimmen lassen.
+    worker:
+      title: Worker
+      replicas: Replikate
+      flavor: VM-Flavor
+      flavorPlaceholder: Flavor auswählen...
+      rootDisk: Root-Disk (GiB)
+      serverGroupID: Server-Gruppen-ID
+      serverGroupIDPlaceholder: UUID (optional)
+      securityGroups: Sicherheitsgruppen
+    workerPools:
+      title: Worker-Pools
+      addPool: Pool hinzufügen
+      noPoolsHint: Keine Worker-Pools konfiguriert. Füge einen Pool hinzu, um Worker-Nodes bereitzustellen.
+      poolName: Pool-Name
+      replicas: Replikate
+      overrides: Variablen-Überschreibungen
+      blockDevices: Zusätzliche Block-Devices
+      bdName: Gerätename
+      bdSize: Größe (GiB)
+    bastion:
+      title: Bastion-Host
+      enabled: Bastion aktivieren
+      flavor: VM-Flavor
+      flavorPlaceholder: Flavor auswählen...
+      rootDisk: Root-Disk (GiB)
+      serverGroupID: Server-Gruppen-ID
+      serverGroupIDPlaceholder: UUID (optional)
+    network:
+      title: Netzwerk
+      externalNetwork: Externes Netzwerk
+      externalNetworkPlaceholder: Externes Netzwerk auswählen...
+      mtu: MTU
+      nodeCIDR: Node-CIDR
+      dnsNameservers: DNS-Nameserver
+      dnsHint: Kommagetrennte Liste von DNS-Nameserver-IPs.
+      disableFloatingIP: Floating-IP für API-Server deaktivieren
+      cni: Container-Netzwerk-Interface
+      cniLabel: CNI-Plugin
+    apiServer:
+      title: API-Server
+      loadBalancer: Load-Balancer-Typ
+      certSANs: Zusätzliche SANs
+      allowedCIDRs: Erlaubte CIDRs (Amphora)
+      allowedCIDRsHint: Zugriff auf die K8s-API einschränken. Stellen Sie sicher, dass die ausgehende IP des Management-Clusters enthalten ist.
+    security:
+      sshTitle: SSH-Zugang
+      sshKeyName: SSH-Schlüsselname
+      sgTitle: Sicherheitsgruppen
+      securityGroups: Globale Sicherheitsgruppen (Namen)
+      securityGroupIDs: Globale Sicherheitsgruppen-IDs
+      workerSGs: Worker-Sicherheitsgruppen (Namen)
+      workerSGIDs: Worker-Sicherheitsgruppen-IDs
+      sgHint: Namensbasierte Gruppen werden ignoriert, wenn ID-basierte Gruppen gesetzt sind.
+    oidc:
+      title: OIDC-Konfiguration
+      description: OpenID Connect für die Cluster-API-Server-Authentifizierung konfigurieren.
+      clientID: Client-ID
+      issuerURL: Issuer-URL
+      usernameClaim: Username-Claim
+      groupsClaim: Groups-Claim
+      usernamePrefix: Username-Präfix
+      groupsPrefix: Groups-Präfix
+    etcdBackup:
+      title: ETCD-Backup (S3)
+      enabled: ETCD-Backup auf S3 aktivieren
+      description: Sichert etcd-Daten in einem S3-kompatiblen Speicher (Swift). Wähle oder erstelle unten einen Container.
+      endpoint: S3-Endpunkt
+      region: Region
+      bucket: Container / Bucket
+      bucketPlaceholder: Container-Name auswählen oder eingeben...
+      containerTitle: Swift-Container
+      createContainer: Container erstellen
+      containerCreated: Container erfolgreich erstellt.
+      containerName: Swift-Container-Name
+    save: Cluster speichern
+    cancel: Abbrechen
+    validating: Quota wird geprüft...
+
+  clusterDetail:
+    generalInfo: Allgemeine Informationen
+    statusInfo: Status
+    clusterClass: Cluster-Klasse
+    created: Erstellt
+    cpReady: Control Plane bereit
+    infraReady: Infrastruktur bereit
+    cpReplicas: CP-Replikate
+    workerReplicas: Worker-Replikate (gesamt)
+    workerPools: Worker-Pools
+    controlPlaneDetail: Control-Plane-Details
+    replicas: Replikate
+    flavor: Flavor
+    rootDisk: Root-Datenträger
+    cni: CNI
+    apiServerLB: API-Server LB
+    image: Image
+    sshKey: SSH-Schlüssel
+    class: Klasse
+    classNamespace: Klassen-Namespace
+    namespace: Namespace
+    managedSecret: Verwaltetes Secret
+    clusterNetwork: Cluster-Netzwerk
+    podsCidr: Pods CIDR
+    servicesCidr: Services CIDR
+    serviceDomain: Service-Domain
+    conditions: Bedingungen
+    noConditions: Keine Bedingungen verfügbar.
+    variables: Topologie-Variablen
+    varName: Variable
+    varType: Typ
+    varPreview: Wert
+    noVariables: Keine Variablen gesetzt.
+    workerPoolsDetail: Worker-Pool-Details
+    noWorkerPools: Keine Worker-Pools konfiguriert.
+    notFound: Cluster nicht gefunden.
+    yamlTitle: Cluster-YAML
+    tabs:
+      overview: Übersicht
+      variables: Variablen
+      snapshots: Snapshots
+      clusterstacks: ClusterStacks
+      yaml: YAML
+    clusterStacksInfo: ClusterStacks-Informationen
+    workerPoolHeaders:
+      name: Name
+      replicas: Replikate
+      flavor: Flavor
+    snapshots:
+      title: ETCD-Snapshots
+      description: Anzeigen und Verwalten von etcd-Snapshots für diesen Cluster. Snapshots sind für RKE2-Downstream-Cluster verfügbar.
+      backupConfig: ETCD-Backup-Konfiguration
+      enabled: Backup aktiviert
+      takeSnapshot: Snapshot erstellen
+      snapshotWip: Das Erstellen und Wiederherstellen von Snapshots wird in einer zukünftigen Rancher-Version verfügbar sein.
+      noData: Keine Snapshots für diesen Cluster gefunden.
+      capiHint: Bei CAPI-Clustern werden etcd-Backups von RKE2 im Workload-Cluster verwaltet und im konfigurierten S3/Swift-Bucket gespeichert.
+
+  clusterStatus:
+    title: Cluster-Erstellungsstatus
+    description: Cluster "{name}" wird im Hintergrund erstellt. Diese Seite zeigt den aktuellen CAPI- und Auto-Import-Status.
+    invalidContext: Cluster-Name oder Namespace fehlt. Öffnen Sie diese Seite erneut aus dem Cluster-Erstellungsflow.
+    capiStatus: CAPI-Status
+    observedGeneration: Beobachtete Generation
+    importStatus: Rancher Auto-Import
+    autoImport: Auto-Import
+    imported: Importiert
+    waiting: Warte auf Import
+    managementClusterId: Rancher-Cluster-ID
+    openClusterStacksDetail: ClusterStacks-Detail öffnen
+    openClusterStacksConfig: ClusterStacks-Konfiguration öffnen
+    openRancherOverview: Rancher-Cluster-Übersicht öffnen
+    dashboardAccess: Dashboard-Zugriff
+    fleetWorkspace: FleetWorkspace
+    rancherClusterOwner: Rancher Cluster-Besitzer
+    fleetNotSet: "Nicht gesetzt (aktuell: '{current}', erwartet: '{expected}')"
+    statusAssigned: Zugewiesen
+    statusPending: Automatische Zuweisung ausstehend
+    syncInProgress: Automatische Synchronisierung läuft.
+    syncDescription: Fleet-Workspace und Cluster-Owner-Bindings werden aus Projekt-Mitgliedschaften abgeglichen. Seite in wenigen Sekunden aktualisieren.
+
+  stacks:
+    title: ClusterStacks
+    createBtn: ClusterStack erstellen
+    noData: Keine ClusterStacks im Namespace 'clusterstacks' gefunden.
+    confirmDeleteRelease: "ClusterStackRelease \"{name}\" löschen? Das kann nicht rückgängig gemacht werden."
+    confirmDeleteStack: "ClusterStack \"{name}\" und alle zugehörigen Releases löschen? Das kann nicht rückgängig gemacht werden."
+    card:
+      name: Name
+      provider: Provider
+      k8sVersion: Kubernetes-Version
+      versions: Versionen
+      channel: Kanal
+      noReleases: Keine Releases verfügbar.
+      status: Status
+      clusterClass: ClusterClass
+      deleteRelease: Dieses Release löschen
+      releaseInUse: Release wird von einem Cluster verwendet
+      stackInUse: Kann nicht gelöscht werden — mindestens ein Release wird von einem Cluster verwendet
+
+  stackForm:
+    createTitle: ClusterStack erstellen
+    editTitle: ClusterStack bearbeiten
+    provider: Provider
+    providerPlaceholder: "z.B. openstack, aws, docker"
+    providerSelect: "-- Infrastruktur-Provider auswählen --"
+    noInfraProviders: "Keine Infrastruktur-Provider installiert. Installieren Sie zuerst einen unter CAPI Providers."
+    name: Name
+    namePlaceholder: "z.B. rke2, kubeadm"
+    nameSelect: "-- Name auswählen --"
+    nameCustom: "Anderer (benutzerdefiniert)..."
+    kubernetesVersion: Kubernetes-Version
+    kubernetesVersionPlaceholder: "z.B. 1.34"
+    channel: Kanal
+    autoSubscribe: Automatisch abonnieren
+    autoSubscribeHint: Wenn aktiviert, werden neue Releases automatisch abonniert. Keine manuelle Versionsliste erforderlich.
+    noProvider: Kein Provider
+    noProviderHint: Verwenden, wenn kein externer CAPI-Infrastruktur-Provider benötigt wird.
+    versions: Versionen
+    versionPlaceholder: "z.B. v1, v7, v0-sha.abc123"
+    versionInvalid: "Version muss mit 'v' beginnen und darf Suffixe wie -ttl.123 oder -sha.abc123 enthalten (z.B. v1, v7, v0-ttl.1773126776, v0-sha.lvlvyfw)."
+    addVersion: Version hinzufügen
+    resourceNameHint: Ressourcenname (automatisch generiert)
+    save: ClusterStack erstellen
+    update: ClusterStack aktualisieren
+    errors:
+      save: ClusterStack konnte nicht erstellt werden.
+      update: ClusterStack konnte nicht aktualisiert werden.
+
+  openstack:
+    title: OpenStack-Projekte
+    createBtn: Anmeldedaten hinzufügen
+    createProjectBtn: Projekt erstellen
+    createProjectTitle: Neues Projekt erstellen
+    projectNameLabel: Projektname
+    projectNamePlaceholder: mein-projekt
+    projectOwnerLabel: Besitzer (optional)
+    projectOwnerPlaceholder: Benutzer suchen...
+    projectMembersLabel: Mitglieder (optional)
+    addCredential: Anmeldedaten hinzufügen
+    credentialCount: Anmeldedaten
+    noData: Keine OpenStack-Anmeldedaten konfiguriert.
+    noCredentials: Noch keine Anmeldedaten in diesem Projekt.
+    deleteProject: Projekt löschen
+    noProjects: Keine cso-Projekte gefunden. Erstelle zuerst ein Projekt.
+    inUse: in Benutzung
+    credential:
+      name: Name
+      authUrl: Auth-URL
+      project: Projekt
+      osProject: OS-Projekt
+      region: Region
+    credentials:
+      title: OpenStack-Anmeldedaten
+      noProject: Kein Projekt
+      deleteBlocked: Löschen nicht möglich – in diesem Namespace existieren aktive Cluster
+    manageOwners: Besitzer verwalten
+    moveCred:
+      title: Anmeldedaten verschieben
+      message: "Anmeldedaten '{name}' in ein anderes Projekt verschieben."
+      targetProject: Zielprojekt
+      selectProject: Projekt auswählen...
+      moveBtn: Verschieben
+    resources:
+      title: Ressourcen
+      credential: Anmeldedaten
+      selectCredential: Anmeldedaten auswählen...
+      tabs:
+        instances: Instanzen
+        networks: Netzwerke
+        securityGroups: Sicherheitsgruppen
+        floatingIPs: Floating IPs
+        volumes: Volumes
+        quotas: Kontingente
+      instances:
+        noData: Keine Instanzen gefunden.
+        name: Name
+        status: Status
+        flavor: Flavor
+        ips: IP-Adressen
+        keyName: Schlüsselpaar
+        created: Erstellt
+      networks:
+        noData: Keine Netzwerke gefunden.
+        name: Name
+        status: Status
+        external: Extern
+        adminState: Admin-Status
+        subnets: Subnetze
+        shared: Geteilt
+      securityGroups:
+        noData: Keine Sicherheitsgruppen gefunden.
+        name: Name
+        description: Beschreibung
+        rulesCount: Regeln
+      floatingIPs:
+        noData: Keine Floating IPs gefunden.
+        address: Floating IP
+        fixed: Feste IP
+        status: Status
+        router: Router-ID
+      volumes:
+        noData: Keine Volumes gefunden.
+        name: Name
+        status: Status
+        size: Größe (GiB)
+        type: Typ
+        az: Verfügbarkeitszone
+        attachedTo: Angehängt an
+      quotas:
+        title: Kontingentübersicht
+        compute: Compute
+        network: Netzwerk
+        storage: Block Storage
+        available: verfügbar
+        instances: Instanzen
+        cores: vCPUs
+        ram: RAM
+        networks: Netzwerke
+        subnets: Subnetze
+        floatingIPs: Floating IPs
+        securityGroups: Sicherheitsgruppen
+        routers: Router
+        volumes: Volumes
+        gigabytes: Festplatte
+        snapshots: Snapshots
+
+  objectstorage:
+    title: Object Storage
+    noData: Keine OpenStack-Anmeldedaten konfiguriert.
+    loading: Object-Storage-Daten werden geladen…
+    credential: Anmeldedaten
+    authUrl: Auth-URL
+    osProject: OS-Projekt
+    ec2Credentials: EC2-Anmeldedaten
+    noEc2: Keine EC2-Anmeldedaten für dieses Projekt gefunden.
+    accessKey: Zugriffsschlüssel
+    secretKey: Geheimschlüssel
+    containers: Container
+    noContainers: Keine Container gefunden.
+    containerName: Containername
+    objects: Objekte
+    size: Größe
+    inUse: In Verwendung
+    inUseByCluster: "Verwendet von Cluster \"{name}\""
+    actions: Aktionen
+    createContainer: Container erstellen
+    containerNamePlaceholder: neuer-container-name
+    deleteContainer: Container löschen
+    deleteContainerConfirm: "Container \"{name}\" löschen? Dies kann nicht rückgängig gemacht werden."
+    cannotDelete: Löschen nicht möglich — Container wird von einem Cluster verwendet.
+    createEc2: EC2-Anmeldedaten erstellen
+    deleteEc2: EC2-Anmeldedaten löschen
+    deleteEc2Confirm: "EC2-Anmeldedaten mit Zugriffsschlüssel \"{access}\" löschen?"
+    showSecret: Anzeigen
+    hideSecret: Ausblenden
+    copied: Kopiert!
+    expandAll: Alle aufklappen
+    collapseAll: Alle zuklappen
+    errors:
+      loadContainers: Container konnten nicht geladen werden.
+      loadEc2: EC2-Anmeldedaten konnten nicht geladen werden.
+      createContainer: Container konnte nicht erstellt werden.
+      deleteContainer: Container konnte nicht gelöscht werden.
+      createEc2: EC2-Anmeldedaten konnten nicht erstellt werden.
+      deleteEc2: EC2-Anmeldedaten konnten nicht gelöscht werden.
+
+  credentialCreate:
+    title: OpenStack-Anmeldedaten hinzufügen
+    editTitle: OpenStack-Anmeldedaten bearbeiten
+    authUrl: Auth-URL (Keystone-Endpunkt)
+    authUrlPlaceholder: https://keystone.example.com:5000
+    domainName: Benutzerdomäne
+    domainNamePlaceholder: Default
+    username: Benutzername
+    usernamePlaceholder: Ihr OpenStack-Benutzername
+    password: Passwort
+    passwordPlaceholder: Ihr OpenStack-Passwort
+    projectName: OpenStack-Projektname
+    projectNamePlaceholder: mein-projekt
+    namespaceHint: "Anmeldedaten werden gespeichert in Namespace"
+    region: Region
+    regionPlaceholder: RegionOne
+    cloudYaml: Oder clouds.yaml-Inhalt einfügen
+    cloudYamlPlaceholder: "clouds:\n  openstack:\n    auth:\n      ..."
+    rancherProject: Rancher-Projekt
+    rancherProjectPlaceholder: Projekt auswählen...
+    save: Anmeldedaten speichern
+    cancel: Abbrechen
+    testConnection: Verbindung testen
+    testSuccess: Verbindung erfolgreich
+    testError: Verbindung fehlgeschlagen
+    uploadYaml: clouds.yaml hochladen
+    forProject: "Projekt"
+    invalidProjectContext: Der URL-Projektkontext wurde ignoriert, da er nicht mit einem zugänglichen Rancher-Projekt oder der Credential-Namespace-Zuweisung übereinstimmt.
+
+  projectMembers:
+    title: Projektmitglieder
+    addMember: Mitglied hinzufügen
+    removeMember: Mitglied entfernen
+    noMembers: Keine Mitglieder diesem Projekt zugewiesen.
+    usernamePlaceholder: "Benutzername"
+    roleOwner: Besitzer
+    roleMember: Mitglied
+    roleReadOnly: Nur Lesen
+    add: Hinzufügen
+
+  quota:
+    title: Quota-Validierung
+    checking: OpenStack-Quota wird geprüft...
+    valid: Quota reicht für diese Cluster-Konfiguration aus.
+    error: "Cluster kann nicht erstellt werden: Quota überschritten."
+    warning: "Warnung: Quota ist knapp."
+    legend:
+      currentUsed: Aktuell genutzt
+      freedByEdit: Durch Edit frei werdend
+      requested: Angefordert
+      buffer: Puffer (Rolling Update)
+      remaining: Verbleibend
+      overLimit: Über dem Limit
+
+  errors:
+    loadFlavors: Fehler beim Laden der Flavors
+    loadImages: Fehler beim Laden der Images
+    loadNetworks: Fehler beim Laden der Netzwerke
+    loadQuota: Fehler beim Laden der Quota-Informationen
+    loadClusters: Fehler beim Laden der Cluster
+    loadStacks: Fehler beim Laden der ClusterStacks
+    deleteRelease: ClusterStackRelease konnte nicht gelöscht werden.
+    deleteStack: ClusterStack konnte nicht gelöscht werden.
+    saveCluster: Fehler beim Speichern des Clusters
+    saveCredentials: Fehler beim Speichern der Anmeldedaten
+    invalidYaml: Ungültiges YAML-Format
+    missingFields: Bitte alle Pflichtfelder ausfüllen
+
+  cso:
+    title: CSO-Verwaltung
+    installed: "Cluster Stack Operator ist installiert"
+    notInstalled: "Der Cluster Stack Operator (CSO) ist noch nicht im Namespace cso-system installiert."
+    configuration: Konfiguration
+    providerLabel: "Provider:"
+    switchWarning: "Achtung: Beim Speichern werden die Werte des anderen Providers geleert. Es können immer nur OCI- oder Git-Werte aktiv sein."
+    saveSuccess: Konfiguration erfolgreich gespeichert.
+    saveError: Konfiguration konnte nicht gespeichert werden.
+    rbacTitle: RBAC / Berechtigungen
+    capiRbacName: ClusterStacks CAPI-Zugriff
+    capiRbacDesc: RoleTemplate + ClusterRole für CAPI/ClusterStack CRD-Zugriff in Projekt-Namespaces. Wird automatisch Projektmitgliedern über den Mitglieder-Dialog zugewiesen.
+    reconcilerName: Automatischer Cluster-Zugriffs-Reconciler
+    reconcilerDesc: Stellt ein privilegiertes Deployment bereit, das importierte CAPI-Cluster kontinuierlich mit Projektmitgliedschaften abgleicht.
+    badgeInstalled: Installiert
+    badgeNotInstalled: Nicht installiert
+    installBtn: Installieren
+    removeBtn: Entfernen
+    unknown: Unbekannt
+    confirmSave:
+      title: Umkonfiguration bestätigen
+      message: "Der Cluster Stack Operator wird mit den neuen Werten umkonfiguriert. Dabei wird ein Helm-Upgrade ausgeführt. Möchtest du fortfahren?"
+      confirm: Anwenden
+    form:
+      ociRegistry: OCI-Registry
+      ociRepository: OCI-Repository
+      ociUsername: OCI-Benutzername
+      ociPassword: OCI-Passwort
+      ociAccessToken: OCI-Access-Token
+      gitProvider: Git-Provider
+      gitOrgName: Git-Organisation
+      gitRepoName: Git-Repository-Name
+      gitAccessToken: Git-Access-Token
+    install:
+      title: CSO installieren
+      helmRepo: Helm-Repository-URL
+      helmRepoHint: "Standard: oci://registry.scs.community/cluster-stacks/cso"
+      certManagerRepo: cert-manager Helm-Repository-URL
+      certManagerHint: "Standard: https://charts.jetstack.io — cert-manager wird von CSO benötigt und automatisch installiert, falls nicht vorhanden."
+      btn: Installieren
+      runtimeSDKMissing: "RuntimeSDK ist beim Core-Provider (cluster-api) nicht aktiviert. Bitte bearbeite den cluster-api Provider unter CAPI Provider und aktiviere RuntimeSDK, bevor du den CSO installierst."
+      error: Installation fehlgeschlagen. Bitte prüfe die Helm-Repository-URL und deine Berechtigungen.
+      repoSyncTimeout: Das Helm-Repository wurde nicht rechtzeitig synchronisiert. Bitte prüfe die Repository-URL und versuche es erneut.
+      progress:
+        certManagerCheck: Prüfe ob cert-manager installiert ist…
+        certManagerNs: Namespace cert-manager wird erstellt…
+        certManagerRepo: cert-manager Helm-Repository wird registriert…
+        certManagerSync: cert-manager Repository wird synchronisiert…
+        certManagerInstall: cert-manager wird installiert…
+        certManagerWait: Warte bis cert-manager bereit ist…
+        namespace: Namespace cso-system wird erstellt…
+        repo: Helm-Repository wird registriert…
+        sync: Helm-Repository wird synchronisiert (kann eine Minute dauern)…
+        chart: Helm-Chart wird installiert…
+        wait: Warte auf CSO…
+    pods:
+      title: Pods
+      noData: Keine Pods im Namespace cso-system gefunden.
+      name: Name
+      status: Status
+      ready: Bereit
+      restarts: Neustarts
+      age: Alter
+      viewLogs: Logs anzeigen
+    logs:
+      title: Logs
+      empty: (kein Log-Inhalt)
+
+  dialog:
+    delete:
+      title: Anmeldedaten löschen
+      message: "Die Anmeldedaten für \"{name}\" und der zugehörige Namespace werden dauerhaft gelöscht."
+      typeHint: "Tippe \"{name}\" zur Bestätigung ein:"
+
+  common:
+    loading: Laden...
+    retry: Wiederholen
+    delete: Löschen
+    edit: Bearbeiten
+    create: Erstellen
+    save: Speichern
+    saving: Wird gespeichert...
+    cancel: Abbrechen
+    refresh: Aktualisieren
+    na: N/A
+    yes: "Ja"
+    no: "Nein"
+    enabled: Aktiviert
+    disabled: Deaktiviert
+    permissionDenied: Nicht genügend Berechtigungen, um diese Seite anzuzeigen.
+
+  capiProviders:
+    title: CAPI Provider
+    createTitle: CAPI Provider installieren
+    editTitle: CAPI Provider bearbeiten
+    createBtn: Provider installieren
+    noData: Keine CAPI Provider installiert.
+    table:
+      name: Name
+      type: Typ
+      version: Version
+      namespace: Namespace
+      status: Status
+      ready: Bereit
+      notReady: Nicht bereit
+    form:
+      name: Provider-Name
+      namePlaceholder: "z.B. aws, azure, openstack"
+      nameEditHint: Der Provider-Name kann nach der Erstellung nicht mehr geändert werden.
+      resourceName: Ressourcenname
+      resourceNameHint: Automatisch generierter Name als metadata.name und Namespace (Typ-Name).
+      type: Provider-Typ
+      typePlaceholder: Typ auswählen...
+      version: Version
+      versionPlaceholder: "z.B. v2.6.1 (optional)"
+      fetchConfigUrl: Fetch-Config-URL
+      fetchConfigUrlPlaceholder: "https://github.com/.../releases/latest/components.yaml"
+      fetchConfigUrlHint: URL des Provider-Komponenten-Manifests. Wird automatisch aus der upstream-Provider-Liste befüllt, wenn ein bekannter Provider ausgewählt wird.
+      namespace: Namespace
+      namespacePlaceholder: rancher-turtles-system
+      namespaceHint: Namespace, in dem der Provider installiert wird. Standard ist rancher-turtles-system.
+      save: Provider installieren
+      saveEdit: Provider speichern
+      features: Features
+      variables: Extra-Variablen
+      runtimeSDKHint: RuntimeSDK für ClusterClass-Feature-Gates aktivieren. Empfohlen für Cluster-Stacks.
+      runtimeSDKWarning: "RuntimeSDK ist nicht aktiviert. Der Cluster Stack Operator (CSO) benötigt RuntimeSDK beim Core-Provider (cluster-api)."
+      optional: (optional)
+      addVariable: Variable hinzufügen
+      variableNamePlaceholder: Variablenname
+      variableValuePlaceholder: Wert
+      nameSelectTypFirst: Erst einen Provider-Typ auswählen
+      nameAlreadyExists: Ein Provider mit diesem Namen existiert bereits.
+      loadingProviders: Providerliste wird geladen...
+      orcTitle: OpenStack Resource Controller (ORC)
+      orcHint: "Der OpenStack Resource Controller wird für die Verwaltung von OpenStack-Ressourcen benötigt. Er wird zusammen mit dem Infrastruktur-Provider installiert."
+      orcHelmNotAvailable: Helm-Installation ist noch nicht verfügbar.
+      orcHelmFuture: kommt bald
+      orcHelmPlaceholder: "Helm-Repository-URL (noch nicht verfügbar)"
+      versionLatest: "(latest)"
+      versionsError: Versionen konnten nicht von GitHub geladen werden
+      orcInstalling: OpenStack Resource Controller wird installiert…
+      orcInstallError: OpenStack Resource Controller konnte nicht installiert werden
+    logs:
+      title: Provider-Logs
+      noPods: Keine Pods im Namespace gefunden.
+      viewLogs: Logs anzeigen
+      restartProvider: Provider neustarten
+      restartPod: Pod neustarten
+    errors:
+      save: CAPI Provider konnte nicht gespeichert werden.
+
+  credentialChange:
+    title: OpenStack-Projekt wechseln
+    message: "Sie sind dabei, Ihr OpenStack-Projekt zu wechseln. Alle ungespeicherten Änderungen auf dieser Seite gehen verloren."
+    from: "Von"
+    to: "Zu"
+    warning: Alle Formulardaten werden beim Wechsel des Projekts zurückgesetzt.
+    confirm: Projekt wechseln
+
+  dialogs:
+    createBucket: Bucket erstellen
+    editFolder: Ordner bearbeiten
+    bucketName: Bucket-Name
+    bucketNamePlaceholder: mein-etcd-backup-bucket
+    subfolderName: Neuer Unterordnername
+    subfolderPlaceholder: neuer-unterordner
+    bucketRequired: Bucket-Name ist erforderlich.
+    folderRequired: Ordnername ist erforderlich.
+    selectBucketFirst: Wählen Sie zuerst einen Bucket aus, bevor Sie einen Ordner erstellen.
+    noSubfolders: Keine Unterordner in diesem Pfad.
+    confirmDeleteFolder: "Ordner {name} und alle enthaltenen Objekte löschen?"
+    confirmDelete: Löschen bestätigen
+    createSubfolder: Unterordner erstellen
+    connectionNotReady: OpenStack-Verbindung ist nicht bereit.
+    failedCreate: "{type} konnte nicht erstellt werden: {error}"
+    up: Hoch
+    files: Dateien
+
+  keypairDialog:
+    title: OpenStack-Schlüsselpaar erstellen
+    name: Schlüsselpaar-Name
+    publicKeyUrl: Öffentlicher-Schlüssel-URL
+    publicKeyUrlPlaceholder: "https://github.com/<user>.keys"
+    publicKeyUrlHint: "Unterstützt Endpunkte wie https://github.com/<user>.keys oder GitLab /.keys URLs."
+    publicKey: Öffentlicher Schlüssel
+    publicKeyPlaceholder: "ssh-ed25519 AAAA... benutzer@host"
+    loadFromUrl: Von URL laden
+    loadingFromUrl: Wird geladen...
+    createBtn: Schlüsselpaar erstellen
